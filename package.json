@@ -1,0 +1,17 @@
+{
+  "name": "uk-fuel-finder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UK fuel price aggregator — Cloudflare worker backend for the Fuel Finder app",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "test": "node test/run.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.0.0"
+  }
+}

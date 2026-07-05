@@ -1,0 +1,17 @@
+name = "uk-fuel-finder"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+# Pull every 10 minutes; ingest writes 2 KV keys per run (well inside free-tier
+# write limits — see the comment in src/index.ts).
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[kv_namespaces]]
+binding = "FUEL_KV"
+id = "REPLACED_AT_DEPLOY" # set to the real namespace id before `wrangler deploy`; not a secret, kept out of git to avoid drift
+
+# Secrets (set with `wrangler secret put`, never committed):
+#   FF_CLIENT_ID / FF_CLIENT_SECRET — Fuel Finder OAuth2 client credentials
+# Optional vars once the official API spec is confirmed:
+#   FF_API_BASE, FF_TOKEN_URL, FF_CSV_URL
