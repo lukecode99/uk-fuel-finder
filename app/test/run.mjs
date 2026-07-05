@@ -426,4 +426,70 @@ test('non-station and malformed urls return null', () => {
   assert.equal(parseStationDeepLink(''), null);
 });
 
+// --- FF-7: affiliate layer + EV helpers (pure modules) -------------------------
+for (const mod of ['affiliates', 'ev']) {
+  execSync(
+    `npx esbuild src/${mod}.ts --bundle --format=esm --platform=node --outfile=${join(outDir, mod + '.mjs')}`,
+    { cwd: root, stdio: 'pipe' },
+  );
+}
+const { AFFILIATE_CONFIG, MAX_LINKOUTS, affiliateLinks, appendLinkOut, awinDeepLink } =
+  await import(join(outDir, 'affiliates.mjs'));
+const { connectorSummary, maxKw, prettyConnector } = await import(join(outDir, 'ev.mjs'));
+
+console.log('\naffiliates');
+test('shipped config renders no links (all flags off)', () => {
+  assert.deepEqual(affiliateLinks(), []);
+  assert.deepEqual(affiliateLinks(AFFILIATE_CONFIG), []);
+});
+test('links render only when every id for the offer is set', () => {
+  const full = {
+    awinAffId: 'aff1',
+    breakdownMid: 'm1',
+    breakdownDest: 'https://partner.example/breakdown',
+    insuranceMid: '',
+    insuranceDest: '',
+  };
+  const links = affiliateLinks(full);
+  assert.equal(links.length, 1);
+  assert.equal(links[0].key, 'breakdown');
+  assert.ok(links[0].url.startsWith('https://www.awin1.com/cread.php?awinmid=m1&awinaffid=aff1'));
+});
+test('partial config (mid without publisher id) renders nothing', () => {
+  const partial = { ...AFFILIATE_CONFIG, breakdownMid: 'm1', breakdownDest: 'https://x' };
+  assert.deepEqual(affiliateLinks(partial), []);
+});
+test('awin deeplink percent-encodes the destination', () => {
+  const url = awinDeepLink('https://p.example/a?b=c&d=e', 'mid', 'aff');
+  assert.ok(url.includes('ued=https%3A%2F%2Fp.example%2Fa%3Fb%3Dc%26d%3De'));
+});
+test('link-out log is newest-first and capped', () => {
+  let log = [];
+  for (let i = 0; i < MAX_LINKOUTS + 10; i++) {
+    log = appendLinkOut(log, { timestamp: i, key: 'breakdown', stationId: null, url: 'u' });
+  }
+  assert.equal(log.length, MAX_LINKOUTS);
+  assert.equal(log[0].timestamp, MAX_LINKOUTS + 9);
+});
+
+console.log('\nev helpers');
+test('OCM connector names shorten to driver labels', () => {
+  assert.equal(prettyConnector('Type 2 (Socket Only)'), 'Type 2');
+  assert.equal(prettyConnector('CHAdeMO'), 'CHAdeMO');
+  assert.equal(prettyConnector('CCS (Type 2)'), 'CCS');
+  assert.equal(prettyConnector('BS1363 3 Pin 13 Amp'), '3-pin');
+});
+test('connector summary groups by type with count and fastest kW', () => {
+  const s = connectorSummary([
+    { type: 'Type 2 (Socket Only)', kw: 7 },
+    { type: 'Type 2 (Tethered Connector)', kw: 22 },
+    { type: 'CCS (Type 2)', kw: 50 },
+  ]);
+  assert.equal(s, 'Type 2 ×2 22kW · CCS 50kW');
+});
+test('maxKw ignores unknown outputs', () => {
+  assert.equal(maxKw([{ type: 'a', kw: null }, { type: 'b', kw: 7.4 }]), 7.4);
+  assert.equal(maxKw([{ type: 'a', kw: null }]), null);
+});
+
 console.log(`\n${passed} tests passed`);

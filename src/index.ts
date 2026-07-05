@@ -5,6 +5,8 @@ export { RETAILER_FEEDS };
 import { officialConfigured, pullOfficialSource } from './official';
 import { evaluateAlerts, getSubscription, parseSubscribeBody, subscribe, unsubscribe } from './alerts';
 export { evaluateAlerts, evaluateSub, inQuietHours, londonMinutes, parseSubscribeBody } from './alerts';
+import { getChargepoints, parseEvQuery } from './ev';
+export { normalizePois, parseEvQuery, getChargepoints, EV_CACHE_TTL_SECONDS } from './ev';
 
 const LATEST_KEY = 'latest';
 // Serve-time honesty filter: stations whose prices are older than this are
@@ -201,6 +203,7 @@ export async function handleRequest(req: Request, env: Env, now = new Date()): P
         'POST /alerts/subscribe',
         'POST /alerts/unsubscribe',
         '/alerts/status?token=<pushToken>',
+        '/ev?lat=<lat>&lon=<lon>&dist=<miles>',
       ],
     });
   }
@@ -218,6 +221,14 @@ export async function handleRequest(req: Request, env: Env, now = new Date()): P
     const snapshot = await env.FUEL_KV.get<Snapshot>(LATEST_KEY, 'json');
     if (!snapshot) return json({ error: 'no data ingested yet' }, 503);
     return json(statusBody(snapshot, now));
+  }
+
+  if (url.pathname === '/ev') {
+    const q = parseEvQuery(url.searchParams);
+    if (!q) return json({ error: 'lat and lon required' }, 400);
+    const result = await getChargepoints(env, q);
+    if (!result) return json({ error: 'chargepoint registry unavailable' }, 502);
+    return json({ query: q, count: result.chargepoints.length, cached: result.cached, chargepoints: result.chargepoints });
   }
 
   if (url.pathname === '/history') {

@@ -5,6 +5,8 @@ import { FuelCode, LatLon, Station } from '../types';
 import { formatDistance, formatPrice } from '../format';
 import { haversineMiles } from '../geo';
 import { HistoryPoint, computeTrend, fetchHistory } from '../history';
+import { affiliateLinks } from '../affiliates';
+import { logLinkOut } from '../linkouts';
 import { colors, radii } from '../theme';
 import PriceAge from './PriceAge';
 import Sparkline from './Sparkline';
@@ -46,6 +48,9 @@ export default function StationSheet({
   }, [station?.id, fuel]);
 
   const trend = history ? computeTrend(history) : null;
+  // Empty until affiliate partner ids are configured — the whole section
+  // stays out of the tree with the shipped (all-off) config.
+  const offers = affiliateLinks();
 
   return (
     <Modal visible={!!station} transparent animationType="slide" onRequestClose={onClose}>
@@ -126,6 +131,26 @@ export default function StationSheet({
           >
             <Text style={styles.directionsText}>Directions ↗</Text>
           </Pressable>
+          {offers.length > 0 && (
+            <View style={styles.offerBox} testID="affiliate-box">
+              <Text style={styles.offerTitle}>Cut your running costs</Text>
+              {offers.map(link => (
+                <Pressable
+                  key={link.key}
+                  style={styles.offerBtn}
+                  testID={`affiliate-${link.key}`}
+                  onPress={() => {
+                    // Log first, then leave — logging never blocks the tap.
+                    logLinkOut(link, station.id).catch(() => {});
+                    Linking.openURL(link.url);
+                  }}
+                >
+                  <Text style={styles.offerText}>{link.cta} ↗</Text>
+                </Pressable>
+              ))}
+              <Text style={styles.offerNote}>Ad — we may earn a commission.</Text>
+            </View>
+          )}
         </View>
       )}
     </Modal>
@@ -197,4 +222,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   directionsText: { color: colors.accentDark, fontWeight: '800', fontSize: 15 },
+  offerBox: {
+    marginTop: 10,
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 12,
+    gap: 8,
+  },
+  offerTitle: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
+  offerBtn: {
+    backgroundColor: colors.bg,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  offerText: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  offerNote: { color: colors.textDim, fontSize: 10 },
 });

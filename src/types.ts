@@ -36,6 +36,8 @@ export interface Snapshot {
 
 export interface Env {
   FUEL_KV: KVNamespace;
+  // Open Charge Map API key (worker secret) — powers the /ev endpoint.
+  OCM_API_KEY?: string;
   // Official Fuel Finder API — dormant until app registration completes.
   FF_CLIENT_ID?: string;
   FF_CLIENT_SECRET?: string;

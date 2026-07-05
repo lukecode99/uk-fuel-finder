@@ -279,6 +279,78 @@ check('drop after unsubscribe fires nothing', sentAfterUnsub === 0 && pushesSent
 
 globalThis.fetch = realFetch;
 
+// --- FF-7: EV chargepoint proxy -------------------------------------------
+// OCM-shaped payload with the quirks the normaliser must survive: a string
+// PowerKW, a null-AddressInfo POI, a POI with no connections.
+const ocmPayload = [
+  {
+    ID: 12345,
+    AddressInfo: {
+      Title: 'Q-Park Westminster',
+      Latitude: 51.501,
+      Longitude: -0.13,
+      Postcode: 'SW1P 4YB',
+    },
+    OperatorInfo: { Title: 'ChargedEV' },
+    StatusType: { Title: 'Operational', IsOperational: true },
+    Connections: [
+      { ConnectionType: { Title: 'Type 2 (Socket Only)' }, PowerKW: 7 },
+      { ConnectionType: { Title: 'CHAdeMO' }, PowerKW: '50.00' },
+    ],
+  },
+  { ID: 12346, AddressInfo: null }, // no coords: dropped
+  {
+    ID: 12347,
+    AddressInfo: { Latitude: 51.502, Longitude: -0.125 },
+    Connections: null,
+  },
+];
+
+const normalized = worker.normalizePois(ocmPayload);
+check('normalize keeps POIs with coords, drops the rest', normalized.length === 2);
+check(
+  'string kW parsed to number, numeric coords kept',
+  normalized[0].lat === 51.501 && normalized[0].lon === -0.13 && normalized[0].connectors[1].kw === 50,
+);
+check(
+  'name, postcode, network, operational status carried over',
+  normalized[0].name === 'Q-Park Westminster' &&
+    normalized[0].postcode === 'SW1P 4YB' &&
+    normalized[0].network === 'ChargedEV' &&
+    normalized[0].status === 'Operational' &&
+    normalized[0].operational === true,
+);
+check('connection-less POI yields empty connectors', normalized[1].connectors.length === 0);
+check('junk payload normalizes to empty', worker.normalizePois({ error: 'nope' }).length === 0);
+
+const evq = worker.parseEvQuery(new URLSearchParams('lat=51.50744&lon=-0.12784&dist=99'));
+check('ev query rounds coords to 3dp and clamps dist', evq.lat === 51.507 && evq.lon === -0.128 && evq.dist === 15);
+check('ev query defaults dist to 5', worker.parseEvQuery(new URLSearchParams('lat=51.5&lon=-0.1')).dist === 5);
+check('ev query rejects missing/invalid coords', worker.parseEvQuery(new URLSearchParams('lat=91&lon=0')) === null && worker.parseEvQuery(new URLSearchParams('lon=-0.1')) === null);
+
+const envEv = { FUEL_KV: new MockKV(), OCM_API_KEY: 'test-key' };
+let ocmCalls = 0;
+let ocmKeyHeader = null;
+globalThis.fetch = (url, init) => {
+  if (String(url).startsWith('https://api.openchargemap.io/')) {
+    ocmCalls++;
+    ocmKeyHeader = init?.headers?.['x-api-key'] ?? null;
+    return Promise.resolve(new Response(JSON.stringify(ocmPayload), { status: 200 }));
+  }
+  return realFetch(url, init);
+};
+const evRes = await worker.handleRequest(new Request('https://x/ev?lat=51.5074&lon=-0.1278&dist=5'), envEv);
+const evBody = await evRes.json();
+check('/ev returns normalized chargepoints', evRes.status === 200 && evBody.count === 2 && evBody.cached === false);
+check('/ev sends the OCM api key header', ocmKeyHeader === 'test-key');
+const evRes2 = await worker.handleRequest(new Request('https://x/ev?lat=51.5071&lon=-0.1282&dist=5'), envEv);
+const evBody2 = await evRes2.json();
+check('nearby /ev query is served from KV cache', evBody2.cached === true && ocmCalls === 1);
+check('/ev without coords is 400', (await worker.handleRequest(new Request('https://x/ev?dist=5'), envEv)).status === 400);
+globalThis.fetch = () => Promise.reject(new Error('down'));
+check('/ev is 502 when the registry is unreachable', (await worker.handleRequest(new Request('https://x/ev?lat=52&lon=-1'), envEv)).status === 502);
+globalThis.fetch = realFetch;
+
 // --- bad requests ---
 check('/stations without bbox is 400', (await worker.handleRequest(new Request('https://x/stations'), env)).status === 400);
 check('unknown path is 404', (await worker.handleRequest(new Request('https://x/nope'), env)).status === 404);
