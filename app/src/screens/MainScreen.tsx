@@ -21,6 +21,7 @@ import StationListItem from '../components/StationListItem';
 import StationSheet from '../components/StationSheet';
 import StationMap from '../components/StationMap';
 import PriceAge from '../components/PriceAge';
+import TrendBanner from '../components/TrendBanner';
 import RouteScreen from './RouteScreen';
 
 // Central London fallback when location permission is declined — the app
@@ -160,6 +161,8 @@ export default function MainScreen() {
           <Text style={styles.cheapestPrice}>{formatPrice(cheapest.prices[fuel])}</Text>
         </Pressable>
       )}
+
+      {view !== 'route' && <TrendBanner stations={stations} fuel={fuel} userLoc={userLoc} />}
 
       {error && view !== 'route' && <Text style={styles.error}>{error}</Text>}
 

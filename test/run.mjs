@@ -118,6 +118,11 @@ check('other sources unaffected by one outage', snap2.sources.filter((s) => s.ok
 const histRes = await worker.handleRequest(new Request(`https://x/history?station=${snapshot.stations[0].siteId}`), env);
 const hist = await histRes.json();
 check('history returns today\'s point', hist.days.length >= 1 && hist.days[hist.days.length - 1].prices);
+// The app only ever sees the source-qualified id from /stations — /history
+// must accept that form too.
+const histByIdRes = await worker.handleRequest(new Request(`https://x/history?station=${encodeURIComponent(snapshot.stations[0].id)}`), env);
+const histById = await histByIdRes.json();
+check('history accepts source-qualified id', histById.days.length === hist.days.length && histById.days.length >= 1);
 
 // --- bad requests ---
 check('/stations without bbox is 400', (await worker.handleRequest(new Request('https://x/stations'), env)).status === 400);

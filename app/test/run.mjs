@@ -234,4 +234,108 @@ test('no on-route station → smallest-detour station becomes baseline', () => {
   assert.equal(c[0].isBaseline, true);
 });
 
+
+// --- FF-4: price history, trends + fill-now signal ---------------------------
+execSync(
+  `npx esbuild src/history.ts --bundle --format=esm --platform=node --outfile=${join(outDir, 'history.mjs')}`,
+  { cwd: root, stdio: 'pipe' },
+);
+const {
+  computeTrend, areaSeries, fillNowSignal, sparkHeights, nearestWithFuel,
+  STEADY_THRESHOLD_PENCE, RISING_SLOPE,
+} = await import(join(outDir, 'history.mjs'));
+
+const day = i => `2026-06-${String(21 + i).padStart(2, '0')}`; // 2026-06-21 .. 
+const series = prices => prices.map((price, i) => ({ date: day(i), price }));
+
+// Rising 0.5p/day over 7 days: 140.0 → 143.0
+const rising = series([140.0, 140.5, 141.0, 141.5, 142.0, 142.5, 143.0]);
+// Falling 0.4p/day over 7 days: 150.0 → 147.6
+const falling = series([150.0, 149.6, 149.2, 148.8, 148.4, 148.0, 147.6]);
+// Flat with 0.2p of noise — inside the steady band
+const flat = series([145.9, 146.1, 145.9, 146.0, 145.9, 146.1, 146.0]);
+
+test('trend direction matches rising data', () => {
+  const t = computeTrend(rising);
+  assert.equal(t.direction, 'rising');
+  assert.equal(t.changePence.toFixed(1), '3.0');
+  assert.ok(Math.abs(t.slopePencePerDay - 0.5) < 1e-9, `slope ${t.slopePencePerDay}`);
+  assert.equal(t.days, 6);
+});
+test('trend direction matches falling data', () => {
+  const t = computeTrend(falling);
+  assert.equal(t.direction, 'falling');
+  assert.ok(Math.abs(t.slopePencePerDay - -0.4) < 1e-9);
+});
+test('sub-threshold drift reads steady', () => {
+  const t = computeTrend(flat);
+  assert.equal(t.direction, 'steady');
+  assert.ok(Math.abs(t.changePence) < STEADY_THRESHOLD_PENCE);
+});
+test('single point yields no trend', () => {
+  assert.equal(computeTrend(series([146.9])), null);
+  assert.equal(computeTrend([]), null);
+});
+test('trend handles gaps in the day sequence', () => {
+  // 140p on day 0, 146p on day 6 — 1p/day even with days missing
+  const gappy = [{ date: day(0), price: 140.0 }, { date: day(3), price: 143.0 }, { date: day(6), price: 146.0 }];
+  const t = computeTrend(gappy);
+  assert.ok(Math.abs(t.slopePencePerDay - 1.0) < 1e-9);
+  assert.equal(t.days, 6);
+});
+
+test('area series averages stations per day', () => {
+  const a = [{ date: day(0), price: 140.0 }, { date: day(1), price: 142.0 }];
+  const b = [{ date: day(0), price: 150.0 }, { date: day(1), price: 152.0 }];
+  const avg = areaSeries([a, b]);
+  assert.deepEqual(avg.map(p => p.price), [145.0, 147.0]);
+  assert.deepEqual(avg.map(p => p.date), [day(0), day(1)]);
+});
+test('area series tolerates stations missing days', () => {
+  const a = [{ date: day(0), price: 140.0 }, { date: day(1), price: 141.0 }];
+  const b = [{ date: day(1), price: 143.0 }];
+  const avg = areaSeries([a, b]);
+  assert.deepEqual(avg.map(p => p.price), [140.0, 142.0]);
+});
+
+test('fill-now signal fires on a rising trend and states the numbers', () => {
+  const t = computeTrend(rising);
+  const s = fillNowSignal(t, 'Petrol (E10)');
+  assert.equal(s.action, 'fill-now');
+  assert.ok(t.slopePencePerDay >= RISING_SLOPE);
+  // the explanation must contain the actual numbers the rule used
+  assert.ok(s.explanation.includes('140.0p'), s.explanation);
+  assert.ok(s.explanation.includes('143.0p'), s.explanation);
+  assert.ok(s.explanation.includes('+3.0p'), s.explanation);
+  assert.ok(s.explanation.includes('0.5p/day'), s.explanation);
+  assert.ok(s.explanation.includes('6 days'), s.explanation);
+});
+test('wait signal on a falling trend states the numbers', () => {
+  const s = fillNowSignal(computeTrend(falling), 'Diesel (B7)');
+  assert.equal(s.action, 'wait');
+  assert.ok(s.explanation.includes('150.0p'));
+  assert.ok(s.explanation.includes('147.6p'));
+  assert.ok(s.explanation.includes('0.4p/day'));
+});
+test('steady trend yields a neutral signal', () => {
+  const s = fillNowSignal(computeTrend(flat), 'Petrol (E10)');
+  assert.equal(s.action, 'neutral');
+});
+test('no history yields an honest neutral signal', () => {
+  const s = fillNowSignal(null, 'Petrol (E10)');
+  assert.equal(s.action, 'neutral');
+  assert.ok(/history/i.test(s.explanation));
+});
+
+test('spark heights normalise to 0..1 with flat mid-height', () => {
+  assert.deepEqual(sparkHeights(series([140, 145, 150])), [0, 0.5, 1]);
+  assert.deepEqual(sparkHeights(series([146.9, 146.9])), [0.5, 0.5]);
+  assert.deepEqual(sparkHeights([]), []);
+});
+
+test('nearestWithFuel picks the N closest stations that price the fuel', () => {
+  const sample = nearestWithFuel([A, B, C, D], 'E10', HOME, 2);
+  assert.deepEqual(sample.map(s => s.id), ['A', 'B']); // D has no E10, C is farthest
+});
+
 console.log(`\n${passed} tests passed`);

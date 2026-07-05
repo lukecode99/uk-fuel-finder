@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { FUELS } from '../fuel';
+import { FUELS, fuelLabel } from '../fuel';
 import { FuelCode, LatLon, Station } from '../types';
 import { formatDistance, formatPrice } from '../format';
 import { haversineMiles } from '../geo';
+import { HistoryPoint, computeTrend, fetchHistory } from '../history';
 import { colors, radii } from '../theme';
 import PriceAge from './PriceAge';
+import Sparkline from './Sparkline';
 
 function directionsUrl(s: Station): string {
   const dest = `${s.lat},${s.lon}`;
@@ -25,6 +27,22 @@ export default function StationSheet({
   from: LatLon | null;
   onClose: () => void;
 }) {
+  const [history, setHistory] = useState<HistoryPoint[] | null>(null);
+
+  useEffect(() => {
+    setHistory(null);
+    if (!station) return;
+    let live = true;
+    fetchHistory(station.id, fuel)
+      .then(pts => live && setHistory(pts))
+      .catch(() => live && setHistory([]));
+    return () => {
+      live = false;
+    };
+  }, [station?.id, fuel]);
+
+  const trend = history ? computeTrend(history) : null;
+
   return (
     <Modal visible={!!station} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} testID="sheet-backdrop" />
@@ -50,6 +68,36 @@ export default function StationSheet({
                 </View>
               );
             })}
+          </View>
+          <View style={styles.historyBox} testID="history-box">
+            <Text style={styles.historyTitle}>
+              {fuelLabel(fuel)} — last 14 days
+              {trend && (
+                <Text
+                  style={[
+                    styles.trendWord,
+                    trend.direction === 'falling' && { color: colors.cheap },
+                    trend.direction === 'rising' && { color: colors.dear },
+                  ]}
+                  testID="station-trend"
+                >
+                  {'  '}
+                  {trend.direction === 'steady'
+                    ? 'steady'
+                    : `${trend.direction} ${Math.abs(trend.changePence).toFixed(1)}p`}
+                </Text>
+              )}
+            </Text>
+            {history === null ? (
+              <Text style={styles.historyNote}>Loading price history…</Text>
+            ) : history.length >= 2 ? (
+              <Sparkline points={history} />
+            ) : (
+              <Text style={styles.historyNote} testID="history-building">
+                Price history for this station is still building — daily points appear from the
+                first day we track it.
+              </Text>
+            )}
           </View>
           <Pressable
             style={styles.directionsBtn}
@@ -105,6 +153,18 @@ const styles = StyleSheet.create({
   fuelNameSel: { color: colors.accent, fontWeight: '700' },
   fuelPrice: { color: colors.text, fontWeight: '700', fontVariant: ['tabular-nums'] },
   fuelPriceNone: { color: colors.textDim, fontWeight: '400' },
+  historyBox: {
+    marginTop: 10,
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    padding: 12,
+    gap: 8,
+  },
+  historyTitle: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
+  trendWord: { fontWeight: '800' },
+  historyNote: { color: colors.textDim, fontSize: 12, lineHeight: 17 },
   directionsBtn: {
     marginTop: 14,
     backgroundColor: colors.accent,

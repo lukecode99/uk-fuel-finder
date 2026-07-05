@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Station } from './types';
 
-export const API_BASE = 'https://uk-fuel-finder.nanoluke521.workers.dev';
+import { API_BASE } from './config';
+export { API_BASE };
 
 const CACHE_KEY = 'ff:lastStations';
 

@@ -121,7 +121,10 @@ export function statusBody(snapshot: Snapshot, now = new Date()) {
   };
 }
 
-async function readHistory(env: Env, siteId: string, now = new Date()) {
+async function readHistory(env: Env, station: string, now = new Date()) {
+  // History entries are keyed by raw siteId (stable across source changes),
+  // but /stations exposes the source-qualified id — accept either form.
+  const siteId = station.includes(':') ? station.slice(station.indexOf(':') + 1) : station;
   const days: string[] = [];
   for (let i = 0; i < HISTORY_DAYS; i++) {
     days.push(new Date(now.getTime() - i * 86_400_000).toISOString().slice(0, 10));
@@ -130,7 +133,7 @@ async function readHistory(env: Env, siteId: string, now = new Date()) {
     days.map((day) => env.FUEL_KV.get<Record<string, { p: Station['prices']; t: string }>>(`hist:${day}`, 'json')),
   );
   const series = days
-    .map((day, i) => ({ day, rec: entries[i]?.[siteId] }))
+    .map((day, i) => ({ day, rec: entries[i]?.[siteId] ?? entries[i]?.[station] }))
     .filter((e) => e.rec)
     .map((e) => ({ date: e.day, prices: e.rec!.p, priceUpdatedAt: e.rec!.t }))
     .reverse();
