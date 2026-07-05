@@ -17,6 +17,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.lukeholder.ukfuelfinder",
       "infoPlist": {
+        "CFBundleDisplayName": "FuelUK",
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "Your location is used to show fuel prices near you and sort stations by distance. It never leaves your device."
       }
