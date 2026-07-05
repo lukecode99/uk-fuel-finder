@@ -4,6 +4,7 @@
     "slug": "uk-fuel-finder",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "fuelfinder",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0F1420",
     "splash": {
@@ -28,6 +29,12 @@
       "output": "single"
     },
     "plugins": [
+      [
+        "@bacons/apple-targets",
+        {
+          "appleTeamId": "V628699P6F"
+        }
+      ],
       [
         "expo-location",
         {

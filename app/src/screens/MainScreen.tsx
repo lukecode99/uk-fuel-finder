@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -26,6 +27,7 @@ import AlertsSheet from '../components/AlertsSheet';
 import RouteScreen from './RouteScreen';
 import { loadFavourites, toggleFavourite } from '../favourites';
 import { resyncIfSubscribed } from '../notifications';
+import { parseStationDeepLink } from '../deeplink';
 
 // Central London fallback when location permission is declined — the app
 // stays fully usable, never blocks, never asks for an account.
@@ -42,6 +44,9 @@ export default function MainScreen() {
   const [selected, setSelected] = useState<Station | null>(null);
   const [favourites, setFavourites] = useState<string[]>([]);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  // Station id from a widget deep link, held until that station is in the
+  // loaded set (launch fetch may still be in flight when the URL arrives).
+  const [pendingStationId, setPendingStationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const regionRef = useRef<MapRegion>({
@@ -104,6 +109,27 @@ export default function MainScreen() {
       loadArea(center, 10);
     })();
   }, [loadArea]);
+
+  // Widget deep links (fuelfinder://station/<id>): cold start arrives via
+  // getInitialURL, warm start via the url event.
+  useEffect(() => {
+    const handle = (url: string | null) => {
+      const id = url ? parseStationDeepLink(url) : null;
+      if (id) setPendingStationId(id);
+    };
+    Linking.getInitialURL().then(handle).catch(() => {});
+    const sub = Linking.addEventListener('url', e => handle(e.url));
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!pendingStationId) return;
+    const target = stations.find(s => s.id === pendingStationId);
+    if (target) {
+      setSelected(target);
+      setPendingStationId(null);
+    }
+  }, [pendingStationId, stations]);
 
   const changeFuel = (f: FuelCode) => {
     setFuel(f);

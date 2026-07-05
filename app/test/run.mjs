@@ -397,4 +397,33 @@ test('invalid quiet hours fall back to 21:00–07:00', () => {
   assert.deepEqual(p.quiet, { start: '21:00', end: '07:00' });
 });
 
+// --- FF-6: widget deep links (fuelfinder://station/<id>) ----------------------
+execSync(
+  `npx esbuild src/deeplink.ts --bundle --format=esm --platform=node --outfile=${join(outDir, 'deeplink.mjs')}`,
+  { cwd: root, stdio: 'pipe' },
+);
+const { parseStationDeepLink } = await import(join(outDir, 'deeplink.mjs'));
+
+console.log('\nparseStationDeepLink');
+test('plain id parses', () => {
+  assert.equal(parseStationDeepLink('fuelfinder://station/abc123'), 'abc123');
+});
+test('percent-encoded source-prefixed id decodes (widget encodes the colon)', () => {
+  assert.equal(
+    parseStationDeepLink('fuelfinder://station/tesco%3A12345'),
+    'tesco:12345',
+  );
+  assert.equal(parseStationDeepLink('fuelfinder://station/tesco:12345'), 'tesco:12345');
+});
+test('triple-slash form (station as path, not host) also parses', () => {
+  assert.equal(parseStationDeepLink('fuelfinder:///station/abc'), 'abc');
+});
+test('non-station and malformed urls return null', () => {
+  assert.equal(parseStationDeepLink('fuelfinder://settings'), null);
+  assert.equal(parseStationDeepLink('fuelfinder://station/'), null);
+  assert.equal(parseStationDeepLink('https://station/abc'), null);
+  assert.equal(parseStationDeepLink('fuelfinder://station/%ZZ'), null);
+  assert.equal(parseStationDeepLink(''), null);
+});
+
 console.log(`\n${passed} tests passed`);

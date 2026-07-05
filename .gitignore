@@ -4,3 +4,6 @@ node_modules/
 package-lock.json
 app/.expo/
 app/dist/
+# expo prebuild artifacts — regenerated on every EAS build
+app/ios/
+app/android/
