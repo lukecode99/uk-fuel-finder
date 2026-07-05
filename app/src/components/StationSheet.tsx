@@ -20,11 +20,15 @@ export default function StationSheet({
   station,
   fuel,
   from,
+  favourite,
+  onToggleFavourite,
   onClose,
 }: {
   station: Station | null;
   fuel: FuelCode;
   from: LatLon | null;
+  favourite: boolean;
+  onToggleFavourite: (id: string) => void;
   onClose: () => void;
 }) {
   const [history, setHistory] = useState<HistoryPoint[] | null>(null);
@@ -49,7 +53,23 @@ export default function StationSheet({
       {station && (
         <View style={styles.sheet} testID="station-sheet">
           <View style={styles.handle} />
-          <Text style={styles.brand}>{station.brand}</Text>
+          <View style={styles.brandRow}>
+            <Text style={styles.brand}>{station.brand}</Text>
+            <Pressable
+              onPress={() => onToggleFavourite(station.id)}
+              hitSlop={10}
+              testID="favourite-btn"
+            >
+              <Text style={[styles.star, favourite && styles.starOn]}>
+                {favourite ? '★' : '☆'}
+              </Text>
+            </Pressable>
+          </View>
+          {favourite && (
+            <Text style={styles.favNote} testID="favourite-note">
+              Favourite — you’ll get a push if {fuelLabel(fuel)} here drops 1p/L or more.
+            </Text>
+          )}
           <Text style={styles.address}>
             {station.address} · {station.postcode}
             {from ? ` · ${formatDistance(haversineMiles(from, station))}` : ''}
@@ -130,7 +150,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.sheetHandle,
     marginBottom: 8,
   },
+  brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brand: { color: colors.text, fontSize: 20, fontWeight: '800' },
+  star: { color: colors.textDim, fontSize: 24, lineHeight: 26 },
+  starOn: { color: colors.amber },
+  favNote: { color: colors.textDim, fontSize: 11 },
   address: { color: colors.textDim, fontSize: 13 },
   priceTable: {
     marginTop: 10,

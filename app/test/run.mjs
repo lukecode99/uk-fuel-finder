@@ -338,4 +338,63 @@ test('nearestWithFuel picks the N closest stations that price the fuel', () => {
   assert.deepEqual(sample.map(s => s.id), ['A', 'B']); // D has no E10, C is farthest
 });
 
+
+// --- FF-5: alert subscription logic (pure module, no storage imports) ---------
+execSync(
+  `npx esbuild src/alerts.ts --bundle --format=esm --platform=node --outfile=${join(outDir, 'alerts.mjs')}`,
+  { cwd: root, stdio: 'pipe' },
+);
+const {
+  AREA_RADIUS_MILES,
+  DEFAULT_PREFS,
+  buildSubscribePayload,
+  isValidQuietTime,
+  toggleId,
+} = await import(join(outDir, 'alerts.mjs'));
+
+test('quiet time validator accepts HH:MM and rejects junk', () => {
+  assert.ok(isValidQuietTime('21:00'));
+  assert.ok(isValidQuietTime('07:30'));
+  assert.ok(!isValidQuietTime('25:00'));
+  assert.ok(!isValidQuietTime('9:00'));
+  assert.ok(!isValidQuietTime('ab:cd'));
+});
+
+test('toggleId adds then removes', () => {
+  assert.deepEqual(toggleId([], 'a'), ['a']);
+  assert.deepEqual(toggleId(['a', 'b'], 'a'), ['b']);
+});
+
+test('subscribe payload carries token, fuel, favourites and default quiet hours', () => {
+  const p = buildSubscribePayload('tok1', 'E10', ['asda:x', 'mfg:y'], DEFAULT_PREFS, HOME);
+  assert.equal(p.token, 'tok1');
+  assert.equal(p.fuel, 'E10');
+  assert.deepEqual(p.favourites, ['asda:x', 'mfg:y']);
+  assert.deepEqual(p.quiet, { start: '21:00', end: '07:00' });
+});
+
+test('area included when enabled with a location, at the 5 mi radius', () => {
+  const p = buildSubscribePayload('tok1', 'E10', [], DEFAULT_PREFS, HOME);
+  assert.deepEqual(p.area, { lat: HOME.lat, lon: HOME.lon, radiusMiles: AREA_RADIUS_MILES });
+  assert.equal(AREA_RADIUS_MILES, 5);
+});
+
+test('area omitted when disabled or when no location', () => {
+  const off = buildSubscribePayload('tok1', 'E10', [], { ...DEFAULT_PREFS, areaEnabled: false }, HOME);
+  assert.equal(off.area, undefined);
+  const noLoc = buildSubscribePayload('tok1', 'E10', [], DEFAULT_PREFS, null);
+  assert.equal(noLoc.area, undefined);
+});
+
+test('invalid quiet hours fall back to 21:00–07:00', () => {
+  const p = buildSubscribePayload(
+    'tok1',
+    'E10',
+    [],
+    { ...DEFAULT_PREFS, quietStart: '9pm', quietEnd: '26:99' },
+    null,
+  );
+  assert.deepEqual(p.quiet, { start: '21:00', end: '07:00' });
+});
+
 console.log(`\n${passed} tests passed`);

@@ -3,6 +3,8 @@ import { RETAILER_FEEDS, dedupeStations, pullRetailerSource } from './sources';
 
 export { RETAILER_FEEDS };
 import { officialConfigured, pullOfficialSource } from './official';
+import { evaluateAlerts, getSubscription, parseSubscribeBody, subscribe, unsubscribe } from './alerts';
+export { evaluateAlerts, evaluateSub, inQuietHours, londonMinutes, parseSubscribeBody } from './alerts';
 
 const LATEST_KEY = 'latest';
 // Serve-time honesty filter: stations whose prices are older than this are
@@ -31,6 +33,11 @@ export async function ingest(env: Env, now = new Date()): Promise<Snapshot> {
 
   await env.FUEL_KV.put(LATEST_KEY, JSON.stringify(snapshot));
   await appendHistory(env, snapshot, now);
+  try {
+    await evaluateAlerts(env, snapshot, now);
+  } catch {
+    // Alerts must never break ingest — a failed push run just retries next cron.
+  }
   return snapshot;
 }
 
@@ -156,12 +163,45 @@ function json(body: unknown, status = 200, contentType = 'application/json'): Re
 export async function handleRequest(req: Request, env: Env, now = new Date()): Promise<Response> {
   const url = new URL(req.url);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
+
+  if (req.method === 'POST' && url.pathname === '/alerts/subscribe') {
+    const body = await req.json().catch(() => null);
+    const snapshot = await env.FUEL_KV.get<Snapshot>(LATEST_KEY, 'json');
+    const sub = parseSubscribeBody(body, snapshot);
+    if (!sub) return json({ error: 'token and a valid fuel are required' }, 400);
+    await subscribe(env, sub);
+    return json({ ok: true, favourites: sub.favourites.length, area: Boolean(sub.area), quiet: sub.quiet });
+  }
+  if (req.method === 'POST' && url.pathname === '/alerts/unsubscribe') {
+    const body = (await req.json().catch(() => null)) as { token?: string } | null;
+    if (!body?.token) return json({ error: 'token required' }, 400);
+    const removed = await unsubscribe(env, body.token);
+    return json({ ok: true, removed });
+  }
   if (req.method !== 'GET') return json({ error: 'method not allowed' }, 405);
+
+  if (url.pathname === '/alerts/status') {
+    const token = url.searchParams.get('token');
+    if (!token) return json({ error: 'token required' }, 400);
+    const sub = await getSubscription(env, token);
+    return json(
+      sub
+        ? { subscribed: true, fuel: sub.fuel, favourites: sub.favourites, area: sub.area ?? null, quiet: sub.quiet }
+        : { subscribed: false },
+    );
+  }
 
   if (url.pathname === '/') {
     return json({
       service: 'uk-fuel-finder',
-      endpoints: ['/stations?bbox=minLng,minLat,maxLng,maxLat', '/status', '/history?station=<siteId>'],
+      endpoints: [
+        '/stations?bbox=minLng,minLat,maxLng,maxLat',
+        '/status',
+        '/history?station=<siteId>',
+        'POST /alerts/subscribe',
+        'POST /alerts/unsubscribe',
+        '/alerts/status?token=<pushToken>',
+      ],
     });
   }
 

@@ -27,6 +27,12 @@ class MockKV {
   async put(key, value) {
     this.store.set(key, value);
   }
+  async delete(key) {
+    this.store.delete(key);
+  }
+  async list({ prefix = '' } = {}) {
+    return { keys: [...this.store.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })) };
+  }
 }
 
 let failures = 0;
@@ -123,6 +129,155 @@ check('history returns today\'s point', hist.days.length >= 1 && hist.days[hist.
 const histByIdRes = await worker.handleRequest(new Request(`https://x/history?station=${encodeURIComponent(snapshot.stations[0].id)}`), env);
 const histById = await histByIdRes.json();
 check('history accepts source-qualified id', histById.days.length === hist.days.length && histById.days.length >= 1);
+
+// --- FF-5: price-drop alerts -------------------------------------------------
+// Synthetic snapshots + a fetch mock on the Expo push endpoint, so every
+// success criterion is asserted on actual push traffic, not internals.
+const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+const mkStation = (siteId, e10, lat, lng, brand = 'Testco') => ({
+  id: `test:${siteId}`,
+  siteId,
+  brand,
+  address: '1 Test St',
+  postcode: 'TE5 7ST',
+  lat,
+  lng,
+  prices: { E10: e10 },
+  priceUpdatedAt: new Date().toISOString(),
+  source: 'test',
+});
+const mkSnap = (stations) => ({
+  ingestedAt: new Date().toISOString(),
+  sources: [{ name: 'test', ok: true, stationCount: stations.length }],
+  stations,
+});
+// July = BST (UTC+1): 11:00Z = noon London, 22:00Z = 23:00 London, 06:30Z = 07:30 London.
+const DAY = new Date('2026-07-05T11:00:00Z');
+const NIGHT = new Date('2026-07-05T22:00:00Z');
+const NIGHT2 = new Date('2026-07-06T00:30:00Z'); // 01:30 London — quiet, past midnight
+const MORNING = new Date('2026-07-06T06:30:00Z');
+
+check('quiet hours: 23:00 London inside 21:00–07:00', worker.inQuietHours(NIGHT, { start: '21:00', end: '07:00' }) === true);
+check('quiet hours: 01:30 London inside overnight window', worker.inQuietHours(NIGHT2, { start: '21:00', end: '07:00' }) === true);
+check('quiet hours: noon London outside', worker.inQuietHours(DAY, { start: '21:00', end: '07:00' }) === false);
+check('quiet hours: 07:30 London outside', worker.inQuietHours(MORNING, { start: '21:00', end: '07:00' }) === false);
+
+const HOME = { lat: 51.5, lon: -0.1 };
+const snapA = mkSnap([
+  mkStation('aaa', 150.0, 51.5, -0.1, 'FavBrand'),
+  mkStation('bbb', 149.0, 51.51, -0.1, 'AreaBrand'),
+]);
+
+const envA = { FUEL_KV: new MockKV() };
+await envA.FUEL_KV.put('latest', JSON.stringify(snapA));
+
+const pushLog = [];
+globalThis.fetch = (url, opts) => {
+  if (String(url) === EXPO_PUSH_URL) {
+    pushLog.push(JSON.parse(opts.body));
+    return Promise.resolve(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+  }
+  return realFetch(url, opts);
+};
+const pushesSent = () => pushLog.flat();
+
+// Subscribe via the HTTP endpoint (favourite passed in source-qualified form —
+// must be normalised to the raw siteId).
+const subRes = await worker.handleRequest(
+  new Request('https://x/alerts/subscribe', {
+    method: 'POST',
+    body: JSON.stringify({
+      token: 'ExponentPushToken[t1]',
+      fuel: 'E10',
+      favourites: ['test:aaa'],
+      area: { lat: HOME.lat, lon: HOME.lon, radiusMiles: 5 },
+    }),
+  }),
+  envA,
+);
+const subBody = await subRes.json();
+check('subscribe endpoint 200 ok', subRes.status === 200 && subBody.ok === true && subBody.favourites === 1 && subBody.area === true);
+check('subscribe defaults quiet hours to 21:00–07:00', subBody.quiet.start === '21:00' && subBody.quiet.end === '07:00');
+const storedSub = JSON.parse(envA.FUEL_KV.store.get('sub:ExponentPushToken[t1]'));
+check('subscribe seeds favourite ref from current snapshot', storedSub.favouriteRefs.aaa === 150.0);
+check('subscribe seeds area ref from current cheapest', storedSub.areaRef === 149.0);
+check('subscribe rejects missing token', (await worker.handleRequest(new Request('https://x/alerts/subscribe', { method: 'POST', body: JSON.stringify({ fuel: 'E10' }) }), envA)).status === 400);
+
+// Fresh subscriber, same prices: nothing fires.
+await worker.evaluateAlerts(envA, snapA, DAY);
+check('no alert when prices unchanged', pushesSent().length === 0);
+
+// SC1: simulated favourite drop of 1.1p fires exactly one push...
+const snapDrop = mkSnap([
+  mkStation('aaa', 148.9, 51.5, -0.1, 'FavBrand'),
+  mkStation('bbb', 149.0, 51.51, -0.1, 'AreaBrand'),
+]);
+await worker.evaluateAlerts(envA, snapDrop, DAY);
+check('favourite drop ≥1p fires exactly one push', pushesSent().length === 1, JSON.stringify(pushesSent()[0]));
+check('push names the station and price', pushesSent()[0]?.title.includes('FavBrand') && pushesSent()[0]?.title.includes('148.9p'));
+// ...and the same drop evaluated again fires nothing more (exactly-once).
+await worker.evaluateAlerts(envA, snapDrop, DAY);
+check('same drop re-evaluated fires nothing (exactly once)', pushesSent().length === 1);
+
+// SC2: below-threshold change (0.9p on favourite, 0.9p on area cheapest) fires nothing.
+const snapSmall = mkSnap([
+  mkStation('aaa', 148.0, 51.5, -0.1, 'FavBrand'),
+  mkStation('bbb', 149.0, 51.51, -0.1, 'AreaBrand'),
+]);
+await worker.evaluateAlerts(envA, snapSmall, DAY);
+check('below-threshold change fires nothing', pushesSent().length === 1);
+
+// Area cheapest drops 2.1p from its 149.0 reference (new cheap station appears).
+// Favourite stays below its own threshold, so exactly one area push.
+const snapArea = mkSnap([
+  mkStation('aaa', 148.0, 51.5, -0.1, 'FavBrand'),
+  mkStation('bbb', 149.0, 51.51, -0.1, 'AreaBrand'),
+  mkStation('ccc', 146.9, 51.49, -0.11, 'CheapBrand'),
+]);
+await worker.evaluateAlerts(envA, snapArea, DAY);
+check('area cheapest drop ≥2p fires one push', pushesSent().length === 2, JSON.stringify(pushesSent()[1]));
+check('area push names cheapest station', pushesSent()[1]?.title.includes('146.9p') && pushesSent()[1]?.body.includes('CheapBrand'));
+
+// SC3: quiet hours suppress, then batch to morning. Two separate drops across
+// two night-time cron runs must arrive as ONE morning push.
+const snapNight1 = mkSnap([
+  mkStation('aaa', 146.0, 51.5, -0.1, 'FavBrand'),
+  mkStation('bbb', 149.0, 51.51, -0.1, 'AreaBrand'),
+  mkStation('ccc', 146.9, 51.49, -0.11, 'CheapBrand'),
+]);
+await worker.evaluateAlerts(envA, snapNight1, NIGHT);
+check('quiet hours suppress push', pushesSent().length === 2);
+const pendingSub = JSON.parse(envA.FUEL_KV.store.get('sub:ExponentPushToken[t1]'));
+check('suppressed alert queued as pending', pendingSub.pending.length === 1);
+const snapNight2 = mkSnap([
+  mkStation('aaa', 144.5, 51.5, -0.1, 'FavBrand'),
+  mkStation('bbb', 149.0, 51.51, -0.1, 'AreaBrand'),
+  mkStation('ccc', 146.9, 51.49, -0.11, 'CheapBrand'),
+]);
+await worker.evaluateAlerts(envA, snapNight2, NIGHT2);
+// Night 2 holds two more alerts: the favourite fell again (146.0 → 144.5) AND
+// the area cheapest is now 2.4p under its 146.9 reference.
+check('second night drops also held', pushesSent().length === 2 && JSON.parse(envA.FUEL_KV.store.get('sub:ExponentPushToken[t1]')).pending.length === 3);
+await worker.evaluateAlerts(envA, snapNight2, MORNING);
+check('morning run sends exactly one batched push', pushesSent().length === 3);
+check('batch titled with drop count', pushesSent()[2]?.title === '3 price drops overnight');
+check('batch body carries both drops', pushesSent()[2]?.body.includes('146.0p') && pushesSent()[2]?.body.includes('144.5p'));
+check('pending cleared after morning batch', JSON.parse(envA.FUEL_KV.store.get('sub:ExponentPushToken[t1]')).pending.length === 0);
+
+// SC4: unsubscribe works — endpoint removes the sub and later drops fire nothing.
+const unsubRes = await worker.handleRequest(
+  new Request('https://x/alerts/unsubscribe', { method: 'POST', body: JSON.stringify({ token: 'ExponentPushToken[t1]' }) }),
+  envA,
+);
+const unsubBody = await unsubRes.json();
+check('unsubscribe endpoint 200 removed', unsubRes.status === 200 && unsubBody.removed === true);
+const statusAfter = await (await worker.handleRequest(new Request('https://x/alerts/status?token=ExponentPushToken%5Bt1%5D'), envA)).json();
+check('/alerts/status reports unsubscribed', statusAfter.subscribed === false);
+const snapHuge = mkSnap([mkStation('aaa', 130.0, 51.5, -0.1, 'FavBrand')]);
+const sentAfterUnsub = await worker.evaluateAlerts(envA, snapHuge, DAY);
+check('drop after unsubscribe fires nothing', sentAfterUnsub === 0 && pushesSent().length === 3);
+
+globalThis.fetch = realFetch;
 
 // --- bad requests ---
 check('/stations without bbox is 400', (await worker.handleRequest(new Request('https://x/stations'), env)).status === 400);

@@ -22,7 +22,10 @@ import StationSheet from '../components/StationSheet';
 import StationMap from '../components/StationMap';
 import PriceAge from '../components/PriceAge';
 import TrendBanner from '../components/TrendBanner';
+import AlertsSheet from '../components/AlertsSheet';
 import RouteScreen from './RouteScreen';
+import { loadFavourites, toggleFavourite } from '../favourites';
+import { resyncIfSubscribed } from '../notifications';
 
 // Central London fallback when location permission is declined — the app
 // stays fully usable, never blocks, never asks for an account.
@@ -37,6 +40,8 @@ export default function MainScreen() {
   const [stations, setStations] = useState<Station[]>([]);
   const [userLoc, setUserLoc] = useState<LatLon | null>(null);
   const [selected, setSelected] = useState<Station | null>(null);
+  const [favourites, setFavourites] = useState<string[]>([]);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const regionRef = useRef<MapRegion>({
@@ -68,10 +73,12 @@ export default function MainScreen() {
   // Launch: cached stations paint immediately; location + live fetch follow.
   useEffect(() => {
     (async () => {
-      const [cached, savedFuel] = await Promise.all([
+      const [cached, savedFuel, favs] = await Promise.all([
         loadCachedStations(),
         AsyncStorage.getItem(FUEL_KEY),
+        loadFavourites(),
       ]);
+      setFavourites(favs);
       if (cached.length) {
         setStations(cached);
         setLoading(false);
@@ -101,6 +108,15 @@ export default function MainScreen() {
   const changeFuel = (f: FuelCode) => {
     setFuel(f);
     AsyncStorage.setItem(FUEL_KEY, f).catch(() => {});
+    resyncIfSubscribed(f, favourites, userLoc).catch(() => {});
+  };
+
+  const onToggleFavourite = (id: string) => {
+    toggleFavourite(id).then(next => {
+      setFavourites(next);
+      // Alert subscription carries the favourites list — keep it in step.
+      resyncIfSubscribed(fuel, next, userLoc).catch(() => {});
+    });
   };
 
   const onRegionChange = (r: MapRegion) => {
@@ -125,6 +141,9 @@ export default function MainScreen() {
     <View style={styles.root}>
       <View style={styles.header}>
         <Text style={styles.title}>Fuel Finder</Text>
+        <Pressable onPress={() => setAlertsOpen(true)} hitSlop={8} testID="alerts-btn">
+          <Text style={styles.bell}>🔔</Text>
+        </Pressable>
         <View style={styles.viewSwitch}>
           {(['map', 'list', 'route'] as const).map(v => (
             <Pressable
@@ -228,7 +247,21 @@ export default function MainScreen() {
         )}
       </View>
 
-      <StationSheet station={selected} fuel={fuel} from={userLoc} onClose={() => setSelected(null)} />
+      <StationSheet
+        station={selected}
+        fuel={fuel}
+        from={userLoc}
+        favourite={selected ? favourites.includes(selected.id) : false}
+        onToggleFavourite={onToggleFavourite}
+        onClose={() => setSelected(null)}
+      />
+      <AlertsSheet
+        visible={alertsOpen}
+        onClose={() => setAlertsOpen(false)}
+        fuel={fuel}
+        favourites={favourites}
+        userLoc={userLoc}
+      />
     </View>
   );
 }
@@ -243,6 +276,7 @@ const styles = StyleSheet.create({
     paddingTop: 6,
   },
   title: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  bell: { fontSize: 18 },
   viewSwitch: {
     flexDirection: 'row',
     backgroundColor: colors.card,
