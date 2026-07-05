@@ -1,5 +1,5 @@
 import React, { useMemo, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { LayoutAnimation, StyleSheet, Text, View } from 'react-native';
 import MapView from 'react-native-map-clustering';
 import { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { FuelCode, MapRegion, Station } from '../types';
@@ -33,6 +33,7 @@ export default function StationMap({
   onSelect: (s: Station) => void;
 }) {
   const mapRef = useRef(null);
+  const superClusterRef = useRef<any>(null);
   const sortedPrices = useMemo(
     () =>
       stations
@@ -42,9 +43,34 @@ export default function StationMap({
     [stations, fuel],
   );
 
+  // react-native-map-clustering@3.4 declares its defaults through
+  // ClusteredMapView.defaultProps, which React 19 ignores on function
+  // components — every default arrives as undefined at runtime. On device
+  // that was fatal: the lib's ref callback unconditionally calls
+  // restProps.mapRef(map), so an undefined mapRef threw on mount and
+  // aborted the app; it also silently disabled clustering. Until the lib
+  // supports React 19, pass its entire former-default set explicitly.
+  // test/run.mjs keeps this list in sync with the lib's defaultProps.
   return (
     <MapView
       ref={mapRef}
+      mapRef={() => {}}
+      superClusterRef={superClusterRef}
+      clusteringEnabled
+      spiralEnabled
+      animationEnabled
+      preserveClusterPressBehavior={false}
+      layoutAnimationConf={LayoutAnimation.Presets.spring}
+      tracksViewChanges={false}
+      maxZoom={20}
+      minZoom={1}
+      minPoints={2}
+      extent={512}
+      nodeSize={64}
+      edgePadding={{ top: 50, left: 50, right: 50, bottom: 50 }}
+      spiderLineColor="#FF0000"
+      onClusterPress={() => {}}
+      onMarkersChange={() => {}}
       style={StyleSheet.absoluteFill}
       provider={PROVIDER_DEFAULT}
       initialRegion={initialRegion}

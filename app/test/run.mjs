@@ -492,4 +492,37 @@ test('maxKw ignores unknown outputs', () => {
   assert.equal(maxKw([{ type: 'a', kw: null }]), null);
 });
 
+// --- FF-9: React 19 ignores function-component defaultProps ------------------
+// react-native-map-clustering declares its defaults via defaultProps, which
+// React 19 dropped for function components — on device that made the lib's
+// internal `restProps.mapRef(map)` call throw on mount (SIGABRT crash on open,
+// build 1) and silently disabled clustering. StationMap must therefore pass
+// every key of the lib's defaultProps explicitly. This test keeps the two in
+// sync: if a lib upgrade adds a default, it fails until StationMap supplies it.
+const { readFileSync } = await import('fs');
+
+console.log('\nFF-9 regression: lib defaultProps are all passed explicitly');
+const libSrc = readFileSync(
+  join(root, 'node_modules/react-native-map-clustering/lib/ClusteredMapView.js'),
+  'utf8',
+);
+const defaultsBlock = libSrc.match(/ClusteredMapView\.defaultProps\s*=\s*\{([\s\S]*?)\n\};/);
+const stationMapSrc = readFileSync(join(root, 'src/components/StationMap.tsx'), 'utf8');
+
+test('the lib still relies on defaultProps (fix still needed)', () => {
+  assert.ok(defaultsBlock, 'defaultProps block gone — lib may now be React 19 safe; revisit StationMap');
+});
+const defaultKeys = [...defaultsBlock[1].matchAll(/^\s{2}([A-Za-z0-9_]+):/gm)].map(m => m[1]);
+test('defaultProps keys were extracted', () => {
+  assert.ok(defaultKeys.includes('mapRef') && defaultKeys.length >= 15, `got: ${defaultKeys.join(', ')}`);
+});
+for (const key of defaultKeys) {
+  test(`StationMap passes ${key} explicitly`, () => {
+    assert.ok(
+      new RegExp(`(^|[\\s{])${key}[=\\s]`, 'm').test(stationMapSrc),
+      `StationMap.tsx does not pass "${key}" — React 19 will see undefined`,
+    );
+  });
+}
+
 console.log(`\n${passed} tests passed`);
