@@ -1,0 +1,54 @@
+name: Deploy web demo to gh-pages
+
+# Dispatch-only, like the iOS pipeline.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: Export web build
+        env:
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          rm -rf .metro dist
+          CI=1 npx expo export --platform web
+          # gh-pages serves from a subpath — absolute /_expo/ URLs 404 there.
+          node -e "
+            const fs = require('fs');
+            const p = 'dist/index.html';
+            fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(/\/_expo\//g, './_expo/'));
+          "
+          touch dist/.nojekyll
+
+      - name: Push to gh-pages
+        run: |
+          cd dist
+          git init -b gh-pages
+          git config user.name "lukecode99"
+          git config user.email "nanoluke521@gmail.com"
+          git add -A
+          git commit -m "Web demo deploy (run ${{ github.run_number }})"
+          git push --force \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" \
+            gh-pages

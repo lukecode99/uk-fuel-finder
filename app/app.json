@@ -3,6 +3,7 @@
     "name": "UK Fuel Finder",
     "slug": "uk-fuel-finder",
     "version": "1.0.0",
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "scheme": "fuelfinder",
     "userInterfaceStyle": "dark",
