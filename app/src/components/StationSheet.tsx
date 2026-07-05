@@ -1,0 +1,116 @@
+import React from 'react';
+import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FUELS } from '../fuel';
+import { FuelCode, LatLon, Station } from '../types';
+import { formatDistance, formatPrice } from '../format';
+import { haversineMiles } from '../geo';
+import { colors, radii } from '../theme';
+import PriceAge from './PriceAge';
+
+function directionsUrl(s: Station): string {
+  const dest = `${s.lat},${s.lon}`;
+  return Platform.OS === 'ios'
+    ? `http://maps.apple.com/?daddr=${dest}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+}
+
+export default function StationSheet({
+  station,
+  fuel,
+  from,
+  onClose,
+}: {
+  station: Station | null;
+  fuel: FuelCode;
+  from: LatLon | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={!!station} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} testID="sheet-backdrop" />
+      {station && (
+        <View style={styles.sheet} testID="station-sheet">
+          <View style={styles.handle} />
+          <Text style={styles.brand}>{station.brand}</Text>
+          <Text style={styles.address}>
+            {station.address} · {station.postcode}
+            {from ? ` · ${formatDistance(haversineMiles(from, station))}` : ''}
+          </Text>
+          <PriceAge iso={station.priceUpdatedAt} />
+          <View style={styles.priceTable}>
+            {FUELS.map(f => {
+              const p = station.prices[f.code];
+              const selected = f.code === fuel;
+              return (
+                <View key={f.code} style={[styles.priceRow, selected && styles.priceRowSel]}>
+                  <Text style={[styles.fuelName, selected && styles.fuelNameSel]}>{f.label}</Text>
+                  <Text style={[styles.fuelPrice, p == null && styles.fuelPriceNone]}>
+                    {formatPrice(p)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+          <Pressable
+            style={styles.directionsBtn}
+            onPress={() => Linking.openURL(directionsUrl(station))}
+            testID="directions-btn"
+          >
+            <Text style={styles.directionsText}>Directions ↗</Text>
+          </Pressable>
+        </View>
+      )}
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  sheet: {
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 18,
+    paddingBottom: 34,
+    gap: 6,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.sheetHandle,
+    marginBottom: 8,
+  },
+  brand: { color: colors.text, fontSize: 20, fontWeight: '800' },
+  address: { color: colors.textDim, fontSize: 13 },
+  priceTable: {
+    marginTop: 10,
+    backgroundColor: colors.card,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    overflow: 'hidden',
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.cardBorder,
+  },
+  priceRowSel: { backgroundColor: colors.accentDark },
+  fuelName: { color: colors.textDim, fontSize: 14 },
+  fuelNameSel: { color: colors.accent, fontWeight: '700' },
+  fuelPrice: { color: colors.text, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  fuelPriceNone: { color: colors.textDim, fontWeight: '400' },
+  directionsBtn: {
+    marginTop: 14,
+    backgroundColor: colors.accent,
+    borderRadius: radii.card,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  directionsText: { color: colors.accentDark, fontWeight: '800', fontSize: 15 },
+});

@@ -2,3 +2,5 @@ node_modules/
 .wrangler/
 .dev.vars
 package-lock.json
+app/.expo/
+app/dist/

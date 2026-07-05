@@ -45,3 +45,22 @@ npx wrangler deploy
 
 Set the KV namespace id in `wrangler.toml` before deploying. Secrets go in via
 `wrangler secret put FF_CLIENT_ID` / `FF_CLIENT_SECRET` — never in this repo.
+
+## App (`app/`)
+
+Expo (React Native) app — map + list + cheapest-near-me. Same stack as
+car-finance. `react-native-maps` with clustering on iOS/Android; the web
+export (used for the gh-pages demo and local verification) swaps the map for
+a fallback panel via `StationMap.web.tsx` and keeps the list fully working.
+
+Every price shown — map marker, list row, cheapest banner, detail sheet —
+carries its age via one canonical `PriceAge`/`formatAge` implementation.
+No accounts, no signup, no ads.
+
+```
+cd app
+npm install
+npm test          # pure-logic tests (sorting, cheapest-near-me, price age, geo)
+npm run typecheck
+npm run build:web # static web export to app/dist
+```

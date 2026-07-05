@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "UK Fuel Finder",
+    "slug": "uk-fuel-finder",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0F1420",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0F1420"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.lukeholder.ukfuelfinder",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Your location is used to show fuel prices near you and sort stations by distance. It never leaves your device."
+      }
+    },
+    "android": {
+      "package": "com.lukeholder.ukfuelfinder",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Your location is used to show fuel prices near you and sort stations by distance. It never leaves your device."
+        }
+      ]
+    ]
+  }
+}
