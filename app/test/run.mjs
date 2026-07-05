@@ -123,4 +123,115 @@ test('bboxAround contains the centre and is symmetric', () => {
   assert.ok(Math.abs((n - s) / 2 - 5 / 69) < 1e-9);
 });
 
+
+
+// --- FF-3: route corridor + worth-the-detour verdict ------------------------
+execSync(
+  `npx esbuild src/route.ts --bundle --format=esm --platform=node --outfile=${join(outDir, 'route.mjs')}`,
+  { cwd: root, stdio: 'pipe' },
+);
+const {
+  distanceToRouteMiles, detourMilesFor, detourMinutesFor, detourVerdict,
+  buildCorridor, ROAD_FACTOR, DETOUR_SPEED_MPH, DEFAULT_LITRES_PER_MILE,
+} = await import(join(outDir, 'route.mjs'));
+
+console.log('distanceToRouteMiles');
+test('point on the route is ~0 miles off', () => {
+  const route = [{ lat: 51.5, lon: -0.1 }, { lat: 51.5, lon: 0.1 }];
+  assert.ok(distanceToRouteMiles({ lat: 51.5, lon: 0.0 }, route) < 0.01);
+});
+test('1/69 degree of latitude off a straight east-west route ≈ 1 mile', () => {
+  const route = [{ lat: 51.5, lon: -0.1 }, { lat: 51.5, lon: 0.1 }];
+  const d = distanceToRouteMiles({ lat: 51.5 + 1 / 69, lon: 0.0 }, route);
+  assert.ok(Math.abs(d - 1) < 0.01, `got ${d}`);
+});
+test('beyond the segment end measures to the endpoint, not the extension', () => {
+  const route = [{ lat: 51.5, lon: -0.1 }, { lat: 51.5, lon: 0.0 }];
+  const d1 = distanceToRouteMiles({ lat: 51.5, lon: 0.1 }, route); // past the end
+  const d2 = distanceToRouteMiles({ lat: 51.5, lon: 0.0 }, route); // at the end
+  assert.ok(d1 > 3 && d2 < 0.01, `got ${d1}, ${d2}`);
+});
+
+console.log('detour model');
+test('detour miles = 2 × off-route × road factor 1.4', () => {
+  assert.ok(Math.abs(detourMilesFor(1) - 2.8) < 1e-9);
+  assert.equal(ROAD_FACTOR, 1.4);
+});
+test('detour minutes at 25 mph: 1 mi off-route → 6.72 min', () => {
+  assert.ok(Math.abs(detourMinutesFor(1) - (2.8 / 25) * 60) < 1e-9);
+  assert.equal(DETOUR_SPEED_MPH, 25);
+});
+
+console.log('detourVerdict — hand-computed worked examples (on the Trello card)');
+test('worked example 1: 5p cheaper, 40L fill, 1 mi detour → net +£1.83, worth it', () => {
+  // saving = (150.0 − 145.0) × 40 / 100 = £2.00
+  // detour fuel = 1.0 mi × 0.114 L/mi × 145.0 p/L / 100 = £0.1653
+  // net = 2.00 − 0.1653 = £1.8347 → worth it
+  const v = detourVerdict({ baselinePence: 150.0, stationPence: 145.0, litresToFill: 40, detourMiles: 1.0 });
+  assert.equal(v.savingPounds.toFixed(2), '2.00');
+  assert.equal(v.detourFuelPounds.toFixed(4), '0.1653');
+  assert.equal(v.netPounds.toFixed(2), '1.83');
+  assert.equal(v.worthIt, true);
+});
+test('worked example 2: 0.5p cheaper, 30L fill, 4 mi detour → net −£0.53, NOT worth it', () => {
+  // saving = (150.0 − 149.5) × 30 / 100 = £0.15
+  // detour fuel = 4 × 0.114 × 149.5 / 100 = £0.6817
+  // net = 0.15 − 0.6817 = −£0.5317 → not worth it
+  const v = detourVerdict({ baselinePence: 150.0, stationPence: 149.5, litresToFill: 30, detourMiles: 4 });
+  assert.equal(v.savingPounds.toFixed(2), '0.15');
+  assert.equal(v.detourFuelPounds.toFixed(4), '0.6817');
+  assert.equal(v.netPounds.toFixed(2), '-0.53');
+  assert.equal(v.worthIt, false);
+});
+test('dearer station is never worth it even with zero detour', () => {
+  const v = detourVerdict({ baselinePence: 150.0, stationPence: 151.0, litresToFill: 40, detourMiles: 0 });
+  assert.equal(v.worthIt, false);
+});
+test('default consumption constant is 0.114 L/mile (~40 mpg)', () => {
+  assert.equal(DEFAULT_LITRES_PER_MILE, 0.114);
+});
+
+console.log('buildCorridor');
+// Straight east-west route along lat 51.5. Offsets in degrees of latitude:
+// 1/69 deg = 1 mile off-route = 6.72 min detour.
+const routeEW = [{ lat: 51.5, lon: -0.2 }, { lat: 51.5, lon: 0.2 }];
+const onRouteCheap = st('onCheap', 51.5001, -0.1, { E10: 150.0 });   // ~0 off → baseline
+const onRouteDear = st('onDear', 51.5001, 0.05, { E10: 152.0 });     // ~0 off, dearer
+const nearSaver = st('nearSaver', 51.5 + 0.5 / 69, 0.0, { E10: 145.0 }); // 0.5 mi off → 3.36 min
+const farStation = st('far', 51.5 + 2 / 69, 0.1, { E10: 140.0 });    // 2 mi off → 13.4 min, outside 5-min cap
+const noFuel = st('noFuel', 51.5001, 0.0, { B7: 160.0 });            // no E10 price
+const corridor = buildCorridor([farStation, nearSaver, onRouteDear, onRouteCheap, noFuel], routeEW, 'E10', 5, 40);
+
+test('corridor only contains stations within the configured detour', () => {
+  const ids = corridor.map(c => c.station.id);
+  assert.ok(!ids.includes('far'), 'far station (13.4 min) must be excluded at 5-min cap');
+  assert.ok(!ids.includes('noFuel'), 'stations without the selected fuel are excluded');
+  assert.deepEqual(new Set(ids), new Set(['onCheap', 'onDear', 'nearSaver']));
+});
+test('baseline is the cheapest on-route station, listed first with no verdict', () => {
+  assert.equal(corridor[0].station.id, 'onCheap');
+  assert.equal(corridor[0].isBaseline, true);
+  assert.equal(corridor[0].verdict, null);
+});
+test('cheaper near-route station gets a positive worth-it verdict', () => {
+  const c = corridor.find(x => x.station.id === 'nearSaver');
+  // off 0.5 mi → detour 1.4 mi; saving = 5p × 40L = £2.00; fuel = 1.4 × 0.114 × 145/100 = £0.2314
+  assert.equal(c.verdict.worthIt, true);
+  assert.equal(c.verdict.netPounds.toFixed(2), '1.77');
+});
+test('dearer on-route station shows explicitly not worth it', () => {
+  const c = corridor.find(x => x.station.id === 'onDear');
+  assert.equal(c.verdict.worthIt, false);
+  assert.ok(c.verdict.netPounds < 0);
+});
+test('raising the cap to 15 min admits the far station', () => {
+  const wide = buildCorridor([farStation, onRouteCheap], routeEW, 'E10', 15, 40);
+  assert.ok(wide.some(c => c.station.id === 'far'));
+});
+test('no on-route station → smallest-detour station becomes baseline', () => {
+  const c = buildCorridor([nearSaver, farStation], routeEW, 'E10', 15, 40);
+  assert.equal(c[0].station.id, 'nearSaver');
+  assert.equal(c[0].isBaseline, true);
+});
+
 console.log(`\n${passed} tests passed`);

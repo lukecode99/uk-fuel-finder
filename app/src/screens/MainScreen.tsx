@@ -21,6 +21,7 @@ import StationListItem from '../components/StationListItem';
 import StationSheet from '../components/StationSheet';
 import StationMap from '../components/StationMap';
 import PriceAge from '../components/PriceAge';
+import RouteScreen from './RouteScreen';
 
 // Central London fallback when location permission is declined — the app
 // stays fully usable, never blocks, never asks for an account.
@@ -30,7 +31,7 @@ const FUEL_KEY = 'ff:fuel';
 
 export default function MainScreen() {
   const [fuel, setFuel] = useState<FuelCode>('E10');
-  const [view, setView] = useState<'map' | 'list'>('map');
+  const [view, setView] = useState<'map' | 'list' | 'route'>('map');
   const [sortMode, setSortMode] = useState<SortMode>('price');
   const [stations, setStations] = useState<Station[]>([]);
   const [userLoc, setUserLoc] = useState<LatLon | null>(null);
@@ -124,7 +125,7 @@ export default function MainScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Fuel Finder</Text>
         <View style={styles.viewSwitch}>
-          {(['map', 'list'] as const).map(v => (
+          {(['map', 'list', 'route'] as const).map(v => (
             <Pressable
               key={v}
               testID={`view-${v}`}
@@ -132,7 +133,7 @@ export default function MainScreen() {
               style={[styles.viewBtn, view === v && styles.viewBtnActive]}
             >
               <Text style={[styles.viewBtnText, view === v && styles.viewBtnTextActive]}>
-                {v === 'map' ? 'Map' : 'List'}
+                {v === 'map' ? 'Map' : v === 'list' ? 'List' : 'Route'}
               </Text>
             </Pressable>
           ))}
@@ -141,7 +142,7 @@ export default function MainScreen() {
 
       <FuelToggle value={fuel} onChange={changeFuel} />
 
-      {cheapest && (
+      {cheapest && view !== 'route' && (
         <Pressable
           style={styles.cheapestBar}
           onPress={() => setSelected(cheapest)}
@@ -160,10 +161,12 @@ export default function MainScreen() {
         </Pressable>
       )}
 
-      {error && <Text style={styles.error}>{error}</Text>}
+      {error && view !== 'route' && <Text style={styles.error}>{error}</Text>}
 
       <View style={styles.body}>
-        {view === 'map' ? (
+        {view === 'route' ? (
+          <RouteScreen fuel={fuel} userLoc={userLoc} onSelect={setSelected} />
+        ) : view === 'map' ? (
           <StationMap
             stations={stations}
             fuel={fuel}
