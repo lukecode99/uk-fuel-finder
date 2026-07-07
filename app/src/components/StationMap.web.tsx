@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { FuelCode, MapRegion, Station } from '../types';
+import { PriceDisplay } from '../tank';
 import { colors } from '../theme';
 
 // react-native-maps has no web implementation. The web export exists for
@@ -11,6 +12,8 @@ export default function StationMap({
 }: {
   stations: Station[];
   fuel: FuelCode;
+  display: PriceDisplay;
+  tankLitres: number;
   initialRegion: MapRegion;
   onRegionChange: (r: MapRegion) => void;
   onSelect: (s: Station) => void;

@@ -3,7 +3,8 @@ import { LayoutAnimation, StyleSheet, Text, View } from 'react-native';
 import MapView from 'react-native-map-clustering';
 import { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { FuelCode, MapRegion, Station } from '../types';
-import { formatPrice, shortAge } from '../format';
+import { shortAge } from '../format';
+import { PriceDisplay, stationPriceText } from '../tank';
 import { colors } from '../theme';
 
 export interface MapHandle {}
@@ -22,12 +23,16 @@ function tierColor(price: number | undefined, sorted: number[]): string {
 export default function StationMap({
   stations,
   fuel,
+  display,
+  tankLitres,
   initialRegion,
   onRegionChange,
   onSelect,
 }: {
   stations: Station[];
   fuel: FuelCode;
+  display: PriceDisplay;
+  tankLitres: number;
   initialRegion: MapRegion;
   onRegionChange: (r: MapRegion) => void;
   onSelect: (s: Station) => void;
@@ -89,7 +94,9 @@ export default function StationMap({
           tracksViewChanges={false}
         >
           <View style={[styles.marker, { borderColor: tierColor(s.prices[fuel], sortedPrices) }]}>
-            <Text style={styles.markerPrice}>{formatPrice(s.prices[fuel])}</Text>
+            <Text style={styles.markerPrice}>
+              {stationPriceText(display, s.prices[fuel], tankLitres)}
+            </Text>
             <Text style={styles.markerAge}>{shortAge(s.priceUpdatedAt)}</Text>
           </View>
         </Marker>

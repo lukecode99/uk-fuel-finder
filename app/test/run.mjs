@@ -492,6 +492,84 @@ test('maxKw ignores unknown outputs', () => {
   assert.equal(maxKw([{ type: 'a', kw: null }]), null);
 });
 
+// --- FF-11: fill-cost price display -------------------------------------------
+execSync(
+  `npx esbuild src/tank.ts --bundle --format=esm --platform=node --outfile=${join(outDir, 'tank.mjs')}`,
+  { cwd: root, stdio: 'pipe' },
+);
+const {
+  TANK_PRESETS, MIN_TANK_LITRES, MAX_TANK_LITRES, DEFAULT_TANK_LITRES,
+  clampLitres, parseLitres, presetKeyFor, litresFromFraction, fractionForLitres,
+  fillCostPounds, formatFillCost, stationPriceText,
+} = await import(join(outDir, 'tank.mjs'));
+
+console.log('\ntank presets & clamping');
+test('presets are the documented UK sizes: S 40 / M 55 / L 70', () => {
+  assert.deepEqual(TANK_PRESETS.map(p => [p.key, p.litres]), [['S', 40], ['M', 55], ['L', 70]]);
+});
+test('default is the Medium preset, inside the slider range', () => {
+  assert.equal(DEFAULT_TANK_LITRES, 55);
+  assert.equal(presetKeyFor(DEFAULT_TANK_LITRES), 'M');
+  assert.ok(MIN_TANK_LITRES < 40 && MAX_TANK_LITRES > 70);
+});
+test('clampLitres rounds and clamps to the slider range', () => {
+  assert.equal(clampLitres(62.4), 62);
+  assert.equal(clampLitres(3), MIN_TANK_LITRES);
+  assert.equal(clampLitres(500), MAX_TANK_LITRES);
+  assert.equal(clampLitres(NaN), DEFAULT_TANK_LITRES);
+});
+test('parseLitres accepts numbers, clamps, rejects junk with null', () => {
+  assert.equal(parseLitres('55'), 55);
+  assert.equal(parseLitres(' 62.4 '), 62);
+  assert.equal(parseLitres('999'), MAX_TANK_LITRES);
+  assert.equal(parseLitres(''), null);
+  assert.equal(parseLitres('abc'), null);
+  assert.equal(parseLitres('0'), null);
+  assert.equal(parseLitres('-5'), null);
+});
+test('presetKeyFor matches exact preset litres only', () => {
+  assert.equal(presetKeyFor(40), 'S');
+  assert.equal(presetKeyFor(70), 'L');
+  assert.equal(presetKeyFor(47), null);
+});
+
+console.log('\ntank slider mapping');
+test('fraction endpoints map to the range limits', () => {
+  assert.equal(litresFromFraction(0), MIN_TANK_LITRES);
+  assert.equal(litresFromFraction(1), MAX_TANK_LITRES);
+});
+test('out-of-range fractions clamp', () => {
+  assert.equal(litresFromFraction(-0.5), MIN_TANK_LITRES);
+  assert.equal(litresFromFraction(1.5), MAX_TANK_LITRES);
+});
+test('litres ↔ fraction round-trips on whole litres', () => {
+  for (const l of [MIN_TANK_LITRES, 40, 55, 70, MAX_TANK_LITRES]) {
+    assert.equal(litresFromFraction(fractionForLitres(l)), l);
+  }
+});
+
+console.log('\nfill cost');
+test('fill cost = pence per litre × litres / 100', () => {
+  assert.equal(fillCostPounds(150, 40), 60);
+  assert.equal(formatFillCost(150, 40), '£60.00');
+  assert.equal(formatFillCost(152.9, 55), '£84.09');
+  assert.equal(formatFillCost(148.9, 55), '£81.89');
+  assert.equal(formatFillCost(168.9, 70), '£118.23');
+});
+test('missing price → null cost, em-dash text', () => {
+  assert.equal(fillCostPounds(undefined, 55), null);
+  assert.equal(formatFillCost(undefined, 55), '—');
+});
+test('stationPriceText dispatches on the display mode', () => {
+  assert.equal(stationPriceText('ppl', 152.9, 55), '152.9p');
+  assert.equal(stationPriceText('fill', 152.9, 55), '£84.09');
+  assert.equal(stationPriceText('ppl', undefined, 55), '—');
+  assert.equal(stationPriceText('fill', undefined, 55), '—');
+});
+test('litres out of range still cost sensibly (clamped, not garbage)', () => {
+  assert.equal(formatFillCost(150, 1000), `£${(150 * MAX_TANK_LITRES / 100).toFixed(2)}`);
+});
+
 // --- FF-9: React 19 ignores function-component defaultProps ------------------
 // react-native-map-clustering declares its defaults via defaultProps, which
 // React 19 dropped for function components — on device that made the lib's

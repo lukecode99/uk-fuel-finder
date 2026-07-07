@@ -16,8 +16,17 @@ import { bboxAround } from '../geo';
 import { cheapestNear, sortStations } from '../sort';
 import { formatPrice } from '../format';
 import { fuelLabel } from '../fuel';
+import {
+  DEFAULT_TANK_LITRES,
+  DISPLAY_KEY,
+  PriceDisplay,
+  TANK_KEY,
+  clampLitres,
+  formatFillCost,
+} from '../tank';
 import { colors, radii } from '../theme';
 import FuelToggle from '../components/FuelToggle';
+import TankControl from '../components/TankControl';
 import StationListItem from '../components/StationListItem';
 import StationSheet from '../components/StationSheet';
 import StationMap from '../components/StationMap';
@@ -38,6 +47,8 @@ const FUEL_KEY = 'ff:fuel';
 
 export default function MainScreen() {
   const [fuel, setFuel] = useState<FuelCode>('E10');
+  const [display, setDisplay] = useState<PriceDisplay>('ppl');
+  const [tankLitres, setTankLitres] = useState(DEFAULT_TANK_LITRES);
   const [view, setView] = useState<'map' | 'list' | 'route' | 'ev'>('map');
   const [sortMode, setSortMode] = useState<SortMode>('price');
   const [stations, setStations] = useState<Station[]>([]);
@@ -79,10 +90,12 @@ export default function MainScreen() {
   // Launch: cached stations paint immediately; location + live fetch follow.
   useEffect(() => {
     (async () => {
-      const [cached, savedFuel, favs] = await Promise.all([
+      const [cached, savedFuel, favs, savedDisplay, savedTank] = await Promise.all([
         loadCachedStations(),
         AsyncStorage.getItem(FUEL_KEY),
         loadFavourites(),
+        AsyncStorage.getItem(DISPLAY_KEY),
+        AsyncStorage.getItem(TANK_KEY),
       ]);
       setFavourites(favs);
       if (cached.length) {
@@ -91,6 +104,10 @@ export default function MainScreen() {
       }
       if (savedFuel === 'E10' || savedFuel === 'E5' || savedFuel === 'B7' || savedFuel === 'SDV') {
         setFuel(savedFuel);
+      }
+      if (savedDisplay === 'ppl' || savedDisplay === 'fill') setDisplay(savedDisplay);
+      if (savedTank != null && isFinite(Number(savedTank))) {
+        setTankLitres(clampLitres(Number(savedTank)));
       }
 
       let center = FALLBACK;
@@ -136,6 +153,17 @@ export default function MainScreen() {
     setFuel(f);
     AsyncStorage.setItem(FUEL_KEY, f).catch(() => {});
     resyncIfSubscribed(f, favourites, userLoc).catch(() => {});
+  };
+
+  const changeDisplay = (d: PriceDisplay) => {
+    setDisplay(d);
+    AsyncStorage.setItem(DISPLAY_KEY, d).catch(() => {});
+  };
+
+  const changeTankLitres = (litres: number) => {
+    const clamped = clampLitres(litres);
+    setTankLitres(clamped);
+    AsyncStorage.setItem(TANK_KEY, String(clamped)).catch(() => {});
   };
 
   const onToggleFavourite = (id: string) => {
@@ -189,6 +217,32 @@ export default function MainScreen() {
 
       {view !== 'ev' && <FuelToggle value={fuel} onChange={changeFuel} />}
 
+      {view === 'map' && (
+        <View style={styles.displayRow}>
+          {(['ppl', 'fill'] as const).map(d => (
+            <Pressable
+              key={d}
+              testID={`display-${d}`}
+              onPress={() => changeDisplay(d)}
+              style={[styles.displayBtn, display === d && styles.displayBtnActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: display === d }}
+            >
+              <Text style={[styles.displayBtnText, display === d && styles.displayBtnTextActive]}>
+                {d === 'ppl' ? '£/litre' : 'Fill cost'}
+              </Text>
+            </Pressable>
+          ))}
+          {display === 'fill' && (
+            <Text style={styles.displayHint}>{tankLitres}L tank</Text>
+          )}
+        </View>
+      )}
+
+      {view === 'map' && display === 'fill' && (
+        <TankControl litres={tankLitres} onChange={changeTankLitres} />
+      )}
+
       {cheapest && (view === 'map' || view === 'list') && (
         <Pressable
           style={styles.cheapestBar}
@@ -204,7 +258,11 @@ export default function MainScreen() {
             </Text>
             <PriceAge iso={cheapest.priceUpdatedAt} />
           </View>
-          <Text style={styles.cheapestPrice}>{formatPrice(cheapest.prices[fuel])}</Text>
+          <Text style={styles.cheapestPrice}>
+            {view === 'map' && display === 'fill'
+              ? formatFillCost(cheapest.prices[fuel], tankLitres)
+              : formatPrice(cheapest.prices[fuel])}
+          </Text>
         </Pressable>
       )}
 
@@ -221,6 +279,8 @@ export default function MainScreen() {
           <StationMap
             stations={stations}
             fuel={fuel}
+            display={display}
+            tankLitres={tankLitres}
             initialRegion={regionRef.current}
             onRegionChange={onRegionChange}
             onSelect={setSelected}
@@ -333,6 +393,25 @@ const styles = StyleSheet.create({
   cheapestLabel: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
   cheapestStation: { color: colors.text, fontSize: 14, fontWeight: '600', marginVertical: 1 },
   cheapestPrice: { color: colors.text, fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  displayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+  },
+  displayBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  displayBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  displayBtnText: { color: colors.textDim, fontWeight: '600', fontSize: 13 },
+  displayBtnTextActive: { color: colors.accentDark },
+  displayHint: { color: colors.textDim, fontSize: 12, marginLeft: 'auto' },
   error: { color: colors.amber, fontSize: 12, marginHorizontal: 16, marginBottom: 6 },
   body: { flex: 1 },
   sortRow: {
