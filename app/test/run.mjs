@@ -603,4 +603,94 @@ for (const key of defaultKeys) {
   });
 }
 
+// --- FF-13: StationListItem + RouteScreen display modes ----------------------
+const stationListItemSrc = readFileSync(join(root, 'src/components/StationListItem.tsx'), 'utf8');
+const routeScreenSrc = readFileSync(join(root, 'src/screens/RouteScreen.tsx'), 'utf8');
+
+console.log('\nFF-13: StationListItem display modes (ppl / fill)');
+test('StationListItem delegates price display to stationPriceText(display, price, tankLitres)', () => {
+  assert.ok(
+    /stationPriceText\(display,\s*price,\s*tankLitres\)/.test(stationListItemSrc),
+    'StationListItem should call stationPriceText(display, price, tankLitres)',
+  );
+});
+test('ppl mode: 152.9p/L at 55 L → "152.9p"', () => {
+  assert.equal(stationPriceText('ppl', 152.9, 55), '152.9p');
+});
+test('fill mode: 152.9p/L at 55 L → "£84.09"', () => {
+  assert.equal(stationPriceText('fill', 152.9, 55), '£84.09');
+});
+test('ppl mode, no price → "—"', () => {
+  assert.equal(stationPriceText('ppl', undefined, 55), '—');
+});
+test('fill mode, no price → "—"', () => {
+  assert.equal(stationPriceText('fill', undefined, 55), '—');
+});
+
+console.log('\nFF-13: RouteScreen — fillLitres onChange passes routeTankStr (not prop)');
+test('fillLitres onChange: saveSettings receives local routeTankStr, not prop tankLitres', () => {
+  const m = routeScreenSrc.match(/setFillLitres[\s\S]{0,300}?saveSettings\([^)]+\)/);
+  assert.ok(m, 'fillLitres onChangeText block + saveSettings call not found');
+  assert.ok(!m[0].includes('saveSettings(t, tankLitres'), 'bug: passing prop tankLitres instead of local state');
+  assert.ok(m[0].includes('saveSettings(t, routeTankStr'), 'should pass local state routeTankStr');
+});
+test('routeTankStr onChange: saveSettings receives new tank value t, not stale state', () => {
+  const m = routeScreenSrc.match(/setRouteTankStr[\s\S]{0,300}?saveSettings\([^)]+\)/);
+  assert.ok(m, 'routeTankStr onChangeText block + saveSettings call not found');
+  assert.ok(m[0].includes('saveSettings(fillLitres, t,'), 'should pass fillLitres then new t');
+});
+
+// --- FF-15: facilitiesForBrand + BRAND_MAP ----------------------------------
+execSync(
+  `npx esbuild ../src/facilities.ts --bundle --format=esm --platform=node --outfile=${join(outDir, 'facilities.mjs')}`,
+  { cwd: root, stdio: 'pipe' },
+);
+const { facilitiesForBrand } = await import(join(outDir, 'facilities.mjs'));
+
+console.log('\nFF-15: facilitiesForBrand');
+test('Tesco → [shop, food, toilet]', () => {
+  assert.deepEqual(facilitiesForBrand('Tesco'), ['shop', 'food', 'toilet']);
+});
+test('Tesco Express → prefix-matches tesco', () => {
+  assert.deepEqual(facilitiesForBrand('Tesco Express'), ['shop', 'food', 'toilet']);
+});
+test('BP → [shop, coffee, toilet]', () => {
+  assert.deepEqual(facilitiesForBrand('BP'), ['shop', 'coffee', 'toilet']);
+});
+test('Shell → [shop, coffee, toilet]', () => {
+  assert.deepEqual(facilitiesForBrand('Shell'), ['shop', 'coffee', 'toilet']);
+});
+test('Morrisons → includes car-wash', () => {
+  assert.ok(facilitiesForBrand('Morrisons').includes('car-wash'));
+});
+test('Moto → full services set', () => {
+  const f = facilitiesForBrand('Moto');
+  assert.ok(f.includes('services') && f.includes('food') && f.includes('shop'));
+});
+test('unknown brand → []', () => {
+  assert.deepEqual(facilitiesForBrand('Acme Fuels'), []);
+});
+test('case-insensitive: SHELL matches shell', () => {
+  assert.deepEqual(facilitiesForBrand('SHELL'), facilitiesForBrand('shell'));
+});
+test('result is a fresh copy — mutating does not affect next call', () => {
+  const a = facilitiesForBrand('Tesco');
+  a.push('wifi');
+  assert.deepEqual(facilitiesForBrand('Tesco'), ['shop', 'food', 'toilet']);
+});
+
+const stationSheetSrc = readFileSync(join(root, 'src/components/StationSheet.tsx'), 'utf8');
+console.log('\nFF-15: facility chip render in StationSheet');
+test('facility-chips testID is present', () => {
+  assert.ok(stationSheetSrc.includes('testID="facility-chips"'));
+});
+test('StationSheet renders facilityChip for each station.facilities entry', () => {
+  assert.ok(stationSheetSrc.includes('facilityChip') && stationSheetSrc.includes('station.facilities'));
+});
+test('FACILITY_LABELS covers all six taxonomy keys', () => {
+  for (const k of ['shop', 'coffee', 'food', 'toilet', 'car-wash', 'services']) {
+    assert.ok(stationSheetSrc.includes(`'${k}'`), `FACILITY_LABELS missing key: ${k}`);
+  }
+});
+
 console.log(`\n${passed} tests passed`);

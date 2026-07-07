@@ -162,7 +162,7 @@ export default function RouteScreen({
           value={fillLitres}
           onChangeText={t => {
             setFillLitres(t);
-            saveSettings(t, tankLitres, maxDetour);
+            saveSettings(t, routeTankStr, maxDetour);
           }}
           testID="fill-litres"
         />
