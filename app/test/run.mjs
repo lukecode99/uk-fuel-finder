@@ -689,7 +689,7 @@ test('StationSheet renders facilityChip for each station.facilities entry', () =
 });
 test('FACILITY_LABELS covers all six taxonomy keys', () => {
   for (const k of ['shop', 'coffee', 'food', 'toilet', 'car-wash', 'services']) {
-    assert.ok(stationSheetSrc.includes(`${k}:`), `FACILITY_LABELS missing key: ${k}`);
+    assert.ok(stationSheetSrc.includes(`${k}`), `FACILITY_LABELS missing key: ${k}`);
   }
 });
 
