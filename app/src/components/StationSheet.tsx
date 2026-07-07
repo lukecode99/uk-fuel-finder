@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { FUELS, fuelLabel } from '../fuel';
 import { FuelCode, LatLon, Station } from '../types';
 import { formatDistance, formatPrice } from '../format';
@@ -62,7 +63,13 @@ export default function StationSheet({
   const offers = affiliateLinks();
 
   return (
-    <Modal visible={!!station} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={!!station}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      onShow={() => Haptics.selectionAsync()}
+    >
       <Pressable style={styles.backdrop} onPress={onClose} testID="sheet-backdrop" />
       {station && (
         <View style={styles.sheet} testID="station-sheet">
@@ -70,7 +77,10 @@ export default function StationSheet({
           <View style={styles.brandRow}>
             <Text style={styles.brand}>{station.brand}</Text>
             <Pressable
-              onPress={() => onToggleFavourite(station.id)}
+              onPress={() => {
+                Haptics.selectionAsync();
+                onToggleFavourite(station.id);
+              }}
               hitSlop={10}
               testID="favourite-btn"
             >
@@ -81,7 +91,7 @@ export default function StationSheet({
           </View>
           {favourite && (
             <Text style={styles.favNote} testID="favourite-note">
-              Favourite — you’ll get a push if {fuelLabel(fuel)} here drops 1p/L or more.
+              Favourite — you'll get a push if {fuelLabel(fuel)} here drops 1p/L or more.
             </Text>
           )}
           <Text style={styles.address}>
