@@ -26,6 +26,7 @@ export default function TankControl({
 }) {
   const [trackWidth, setTrackWidth] = useState(0);
   const [draft, setDraft] = useState<string | null>(null);
+  const trackRef = useRef<View>(null);
   const trackX = useRef(0);
   const widthRef = useRef(0);
   const onChangeRef = useRef(onChange);
@@ -49,8 +50,8 @@ export default function TankControl({
   const onTrackLayout = (e: LayoutChangeEvent) => {
     widthRef.current = e.nativeEvent.layout.width;
     setTrackWidth(e.nativeEvent.layout.width);
-    e.currentTarget.measure((_x, _y, _w, _h, pageX) => {
-      trackX.current = pageX;
+    trackRef.current?.measureInWindow((x: number) => {
+      trackX.current = x;
     });
   };
 
@@ -101,6 +102,7 @@ export default function TankControl({
         <Text style={styles.unit}>L</Text>
       </View>
       <View
+        ref={trackRef}
         style={styles.track}
         onLayout={onTrackLayout}
         {...pan.panHandlers}
