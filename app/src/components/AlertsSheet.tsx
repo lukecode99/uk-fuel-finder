@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { FuelCode, LatLon } from '../types';
 import { AlertPrefs, DEFAULT_PREFS } from '../alerts';
 import { fuelLabel } from '../fuel';
@@ -51,7 +52,7 @@ export default function AlertsSheet({
         if (!t) {
           setNote(
             Platform.OS === 'web'
-              ? 'Push alerts need the iOS app — this web preview can’t receive notifications.'
+              ? 'Push alerts need the iOS app — this web preview can't receive notifications.'
               : 'Notification permission was declined — enable it in Settings to get alerts.',
           );
           return;
@@ -62,6 +63,7 @@ export default function AlertsSheet({
           setNote('Could not reach the alert service — try again in a minute.');
           return;
         }
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await update({ ...prefs, enabled: true });
       } else {
         if (token) await unsubscribeAlerts(token);
