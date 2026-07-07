@@ -99,6 +99,7 @@ export function toGeoJson(snapshot: Snapshot, stations: Station[], excludedStale
         prices: s.prices,
         priceUpdatedAt: s.priceUpdatedAt,
         source: s.source,
+        ...(s.facilities?.length ? { facilities: s.facilities } : {}),
       },
     })),
   };

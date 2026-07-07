@@ -14,7 +14,6 @@ import { FuelCode, LatLon, MapRegion, SortMode, Station } from '../types';
 import { fetchStations, loadCachedStations } from '../api';
 import { bboxAround } from '../geo';
 import { cheapestNear, sortStations } from '../sort';
-import { formatPrice } from '../format';
 import { fuelLabel } from '../fuel';
 import {
   DEFAULT_TANK_LITRES,
@@ -22,7 +21,7 @@ import {
   PriceDisplay,
   TANK_KEY,
   clampLitres,
-  formatFillCost,
+  stationPriceText,
 } from '../tank';
 import { colors, radii } from '../theme';
 import FuelToggle from '../components/FuelToggle';
@@ -217,7 +216,7 @@ export default function MainScreen() {
 
       {view !== 'ev' && <FuelToggle value={fuel} onChange={changeFuel} />}
 
-      {view === 'map' && (
+      {view !== 'ev' && (
         <View style={styles.displayRow}>
           {(['ppl', 'fill'] as const).map(d => (
             <Pressable
@@ -239,7 +238,7 @@ export default function MainScreen() {
         </View>
       )}
 
-      {view === 'map' && display === 'fill' && (
+      {view !== 'ev' && display === 'fill' && (
         <TankControl litres={tankLitres} onChange={changeTankLitres} />
       )}
 
@@ -259,9 +258,7 @@ export default function MainScreen() {
             <PriceAge iso={cheapest.priceUpdatedAt} />
           </View>
           <Text style={styles.cheapestPrice}>
-            {view === 'map' && display === 'fill'
-              ? formatFillCost(cheapest.prices[fuel], tankLitres)
-              : formatPrice(cheapest.prices[fuel])}
+            {stationPriceText(display, cheapest.prices[fuel], tankLitres)}
           </Text>
         </Pressable>
       )}
@@ -274,7 +271,7 @@ export default function MainScreen() {
         {view === 'ev' ? (
           <EvScreen userLoc={userLoc} />
         ) : view === 'route' ? (
-          <RouteScreen fuel={fuel} userLoc={userLoc} onSelect={setSelected} />
+          <RouteScreen fuel={fuel} display={display} tankLitres={tankLitres} userLoc={userLoc} onSelect={setSelected} />
         ) : view === 'map' ? (
           <StationMap
             stations={stations}
@@ -316,6 +313,8 @@ export default function MainScreen() {
                 <StationListItem
                   station={item}
                   fuel={fuel}
+                  display={display}
+                  tankLitres={tankLitres}
                   from={userLoc}
                   cheapest={cheapest?.id === item.id}
                   onPress={() => setSelected(item)}

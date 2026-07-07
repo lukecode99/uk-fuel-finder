@@ -1,20 +1,25 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FuelCode, LatLon, Station } from '../types';
-import { formatDistance, formatPrice } from '../format';
+import { formatDistance } from '../format';
 import { haversineMiles } from '../geo';
+import { PriceDisplay, stationPriceText } from '../tank';
 import { colors, radii } from '../theme';
 import PriceAge from './PriceAge';
 
 export default function StationListItem({
   station,
   fuel,
+  display,
+  tankLitres,
   from,
   cheapest,
   onPress,
 }: {
   station: Station;
   fuel: FuelCode;
+  display: PriceDisplay;
+  tankLitres: number;
   from: LatLon | null;
   cheapest: boolean;
   onPress: () => void;
@@ -33,7 +38,9 @@ export default function StationListItem({
         <PriceAge iso={station.priceUpdatedAt} />
       </View>
       <View style={styles.right}>
-        <Text style={[styles.price, price == null && styles.noPrice]}>{formatPrice(price)}</Text>
+        <Text style={[styles.price, price == null && styles.noPrice]}>
+          {stationPriceText(display, price, tankLitres)}
+        </Text>
         {from && <Text style={styles.distance}>{formatDistance(haversineMiles(from, station))}</Text>}
       </View>
     </Pressable>

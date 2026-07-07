@@ -10,6 +10,7 @@ export interface Station {
   prices: Partial<Record<FuelCode, number>>;
   priceUpdatedAt: string; // ISO timestamp — every price surface must show its age
   source: string;
+  facilities?: string[]; // taxonomy: shop|coffee|food|toilet|car-wash|services (FF-15)
 }
 
 export type SortMode = 'price' | 'distance';

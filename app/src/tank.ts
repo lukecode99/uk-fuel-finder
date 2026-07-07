@@ -65,8 +65,8 @@ export function formatFillCost(pencePerLitre: number | undefined, litres: number
   return cost == null ? '—' : `£${cost.toFixed(2)}`;
 }
 
-/** Every station price on the map screen renders through this, so the toggle
- * flips all of them at once. */
+/** Every station price on map, list, and route views renders through this, so
+ * the toggle flips all of them at once. */
 export function stationPriceText(
   display: PriceDisplay,
   pencePerLitre: number | undefined,

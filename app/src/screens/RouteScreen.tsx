@@ -13,8 +13,8 @@ import { FuelCode, LatLon, Station } from '../types';
 import { fetchStations } from '../api';
 import { geocode, fetchRoute, routeBbox } from '../routing';
 import { buildCorridor, CorridorStation } from '../route';
-import { formatPrice } from '../format';
 import { fuelLabel } from '../fuel';
+import { PriceDisplay, stationPriceText } from '../tank';
 import { colors, radii } from '../theme';
 import PriceAge from '../components/PriceAge';
 
@@ -44,10 +44,14 @@ function VerdictBadge({ c }: { c: CorridorStation }) {
 
 export default function RouteScreen({
   fuel,
+  display,
+  tankLitres,
   userLoc,
   onSelect,
 }: {
   fuel: FuelCode;
+  display: PriceDisplay;
+  tankLitres: number;
   userLoc: LatLon | null;
   onSelect: (s: Station) => void;
 }) {
@@ -200,7 +204,7 @@ export default function RouteScreen({
                   <PriceAge iso={c.station.priceUpdatedAt} />
                 </View>
                 <View style={styles.priceCol}>
-                  <Text style={styles.price}>{formatPrice(price)}</Text>
+                  <Text style={styles.price}>{stationPriceText(display, price, tankLitres)}</Text>
                   <Text style={styles.detour}>
                     {c.isBaseline ? 'on route' : `+${c.detourMinutes.toFixed(1)} min detour`}
                   </Text>

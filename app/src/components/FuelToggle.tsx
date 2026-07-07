@@ -30,6 +30,7 @@ export default function FuelToggle({
             accessibilityState={{ selected: active }}
           >
             <Text style={[styles.label, active && styles.labelActive]}>{f.short}</Text>
+            <Text style={[styles.sub, active && styles.subActive]}>{f.sub}</Text>
           </Pressable>
         );
       })}
@@ -51,4 +52,6 @@ const styles = StyleSheet.create({
   pillActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   label: { color: colors.textDim, fontWeight: '600', fontSize: 13 },
   labelActive: { color: colors.accentDark },
+  sub: { color: colors.textDim, fontSize: 10, fontWeight: '500', opacity: 0.7, textAlign: 'center' },
+  subActive: { color: colors.accentDark, opacity: 0.8 },
 });

@@ -11,6 +11,15 @@ import { colors, radii } from '../theme';
 import PriceAge from './PriceAge';
 import Sparkline from './Sparkline';
 
+const FACILITY_LABELS: Record<string, string> = {
+  shop: 'Shop',
+  coffee: 'Coffee',
+  food: 'Food',
+  toilet: 'Toilets',
+  'car-wash': 'Car Wash',
+  services: 'Services',
+};
+
 function directionsUrl(s: Station): string {
   const dest = `${s.lat},${s.lon}`;
   return Platform.OS === 'ios'
@@ -86,7 +95,10 @@ export default function StationSheet({
               const selected = f.code === fuel;
               return (
                 <View key={f.code} style={[styles.priceRow, selected && styles.priceRowSel]}>
-                  <Text style={[styles.fuelName, selected && styles.fuelNameSel]}>{f.label}</Text>
+                  <View>
+                    <Text style={[styles.fuelName, selected && styles.fuelNameSel]}>{f.label}</Text>
+                    <Text style={styles.fuelSub}>{f.sub}</Text>
+                  </View>
                   <Text style={[styles.fuelPrice, p == null && styles.fuelPriceNone]}>
                     {formatPrice(p)}
                   </Text>
@@ -94,6 +106,15 @@ export default function StationSheet({
               );
             })}
           </View>
+          {station.facilities && station.facilities.length > 0 && (
+            <View style={styles.facilityRow} testID="facility-chips">
+              {station.facilities.map(f => (
+                <View key={f} style={styles.facilityChip}>
+                  <Text style={styles.facilityText}>{FACILITY_LABELS[f] ?? f}</Text>
+                </View>
+              ))}
+            </View>
+          )}
           <View style={styles.historyBox} testID="history-box">
             <Text style={styles.historyTitle}>
               {fuelLabel(fuel)} — last 14 days
@@ -200,8 +221,19 @@ const styles = StyleSheet.create({
   priceRowSel: { backgroundColor: colors.accentDark },
   fuelName: { color: colors.textDim, fontSize: 14 },
   fuelNameSel: { color: colors.accent, fontWeight: '700' },
+  fuelSub: { color: colors.textDim, fontSize: 10, opacity: 0.6 },
   fuelPrice: { color: colors.text, fontWeight: '700', fontVariant: ['tabular-nums'] },
   fuelPriceNone: { color: colors.textDim, fontWeight: '400' },
+  facilityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  facilityChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  facilityText: { color: colors.textDim, fontSize: 11, fontWeight: '600' },
   historyBox: {
     marginTop: 10,
     backgroundColor: colors.card,

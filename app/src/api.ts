@@ -16,6 +16,7 @@ interface StationFeature {
     prices: Station['prices'];
     priceUpdatedAt: string;
     source: string;
+    facilities?: string[];
   };
 }
 
@@ -30,6 +31,7 @@ function featureToStation(f: StationFeature): Station {
     prices: f.properties.prices,
     priceUpdatedAt: f.properties.priceUpdatedAt,
     source: f.properties.source,
+    ...(f.properties.facilities?.length ? { facilities: f.properties.facilities } : {}),
   };
 }
 

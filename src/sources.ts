@@ -1,4 +1,5 @@
 import type { Snapshot, SourceStatus, Station, StationPrices } from './types';
+import { facilitiesForBrand } from './facilities';
 
 // Retailer direct feeds from the (closed) CMA interim open-data scheme. Several
 // retailers still publish them; each carries its own last_updated stamp which we
@@ -55,10 +56,12 @@ export function parseRetailerFeed(
       if (Number.isFinite(p) && p > 0) prices[code] = p < 10 ? Math.round(p * 1000) / 10 : p;
     }
     if (Object.keys(prices).length === 0) continue;
+    const brand = String(s.brand ?? name).trim();
+    const facilities = facilitiesForBrand(brand);
     stations.push({
       id: `${name}:${s.site_id}`,
       siteId: String(s.site_id),
-      brand: String(s.brand ?? name).trim(),
+      brand,
       address: String(s.address ?? '').trim(),
       postcode: String(s.postcode ?? '').trim(),
       lat,
@@ -66,6 +69,7 @@ export function parseRetailerFeed(
       prices,
       priceUpdatedAt,
       source: name,
+      ...(facilities.length ? { facilities } : {}),
     });
   }
   return { stations, feedUpdatedAt };

@@ -17,6 +17,7 @@ export interface Station {
   prices: StationPrices; // pence per litre
   priceUpdatedAt: string; // ISO 8601 — when the source last updated these prices
   source: string;
+  facilities?: string[]; // taxonomy: shop|coffee|food|toilet|car-wash|services (FF-15)
 }
 
 export interface SourceStatus {
