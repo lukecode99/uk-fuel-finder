@@ -58,7 +58,7 @@ export default function RouteScreen({
   const [dest, setDest] = useState('');
   const [maxDetour, setMaxDetour] = useState<number>(5);
   const [fillLitres, setFillLitres] = useState('30');
-  const [tankLitres, setTankLitres] = useState('50');
+  const [routeTankStr, setRouteTankStr] = useState('50');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export default function RouteScreen({
         if (!raw) return;
         const s = JSON.parse(raw);
         if (s.fillLitres) setFillLitres(String(s.fillLitres));
-        if (s.tankLitres) setTankLitres(String(s.tankLitres));
+        if (s.routeTankLitres) setRouteTankStr(String(s.routeTankLitres));
         if (s.maxDetour) setMaxDetour(s.maxDetour);
       })
       .catch(() => {});
@@ -79,7 +79,7 @@ export default function RouteScreen({
   const saveSettings = (fill: string, tank: string, detour: number) => {
     AsyncStorage.setItem(
       SETTINGS_KEY,
-      JSON.stringify({ fillLitres: Number(fill) || 30, tankLitres: Number(tank) || 50, maxDetour: detour }),
+      JSON.stringify({ fillLitres: Number(fill) || 30, routeTankLitres: Number(tank) || 50, maxDetour: detour }),
     ).catch(() => {});
   };
 
@@ -146,7 +146,7 @@ export default function RouteScreen({
             style={[styles.pill, maxDetour === m && styles.pillActive]}
             onPress={() => {
               setMaxDetour(m);
-              saveSettings(fillLitres, tankLitres, m);
+              saveSettings(fillLitres, routeTankStr, m);
             }}
           >
             <Text style={[styles.pillText, maxDetour === m && styles.pillTextActive]}>{m} min</Text>
@@ -171,9 +171,9 @@ export default function RouteScreen({
         <TextInput
           style={styles.numInput}
           keyboardType="numeric"
-          value={tankLitres}
+          value={routeTankStr}
           onChangeText={t => {
-            setTankLitres(t);
+            setRouteTankStr(t);
             saveSettings(fillLitres, t, maxDetour);
           }}
           testID="tank-litres"
