@@ -35,10 +35,6 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: '1'
         run: CI=1 npx expo prebuild --platform ios --clean --no-install
-
-      # Expo prebuild writes an aps-environment entitlement by default; the
-      # app has no push notifications and the profiles don't carry the
-      # capability, so drop it before signing.
       - name: Strip unused push entitlement
         run: |
           for f in $(find ios -name "*.entitlements" -not -path "*Pods*"); do
